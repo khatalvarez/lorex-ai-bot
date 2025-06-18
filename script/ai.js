@@ -16,7 +16,7 @@ function convertToBold(text) {
 }
 
 module.exports.config = {
-  name: 'ai',
+  name: 'nova',
   version: '1.0.1',
   hasPermission: 0,
   usePrefix: false,
@@ -50,7 +50,7 @@ module.exports.run = async function({ api, event, args }) {
     api.sendMessage("🔄 Analyzing image...", event.threadID, event.messageID);
 
     try {
-      const { data } = await axios.get('https://gpt.lorex-ai.com/api/gemini-vision', {
+      const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gemini-flash-vision?prompt=Hello&imageUrl=', {
         params: {
           q: input,
           uid: uid,
@@ -73,7 +73,7 @@ module.exports.run = async function({ api, event, args }) {
 
   if (!input) {
     return api.sendMessage(
-      "Please provide a query or prompt to interact with 𝗟𝗼𝗿𝗲𝘅 𝗔𝗶.",
+      "☺Hello! I'm 𝗡𝗼𝘃𝗮 𝗔𝘀𝘀𝗶𝘀𝘁𝗮𝗻𝘁 your friendly AI assistant. I'm ready to help you find information and answer your questions. How can I assist you today?.",
       event.threadID,
       event.messageID
     );
@@ -82,7 +82,7 @@ module.exports.run = async function({ api, event, args }) {
   api.sendMessage("🔄 Generating...", event.threadID, event.messageID);
 
   try {
-    const { data } = await axios.get('https://gpt.lorex-ai.com/api/gpt-4o', {
+    const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gpt-4o?query=What+is+love&uid=61577040643519', {
       params: {
         ask: input,
         uid: uid,
@@ -102,7 +102,7 @@ module.exports.run = async function({ api, event, args }) {
     return api.sendMessage(formattedResponse, event.threadID, event.messageID);
 
   } catch (error) {
-    console.error("⛔ Error processing request:", error.message || error);
-    return api.sendMessage("⛔ An error occurred while processing your request. Please try again.", event.threadID, event.messageID);
+    console.error("😥 Error processing request:", error.message || error);
+    return api.sendMessage("😥 An error occurred while processing your request. Please try again.", event.threadID, event.messageID);
   }
 };
