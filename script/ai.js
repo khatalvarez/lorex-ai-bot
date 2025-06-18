@@ -34,8 +34,9 @@ module.exports.run = async function({ api, event, args }) {
   const input = args.join(' ');
   const uid = event.senderID;
 
-  const isPhoto = event.type === "message_reply" && event.messageReply.attachments[0]?.type === "photo";
-  
+  const isPhoto = event.type === "message_reply" &&
+    event.messageReply?.attachments?.[0]?.type === "photo";
+
   if (isPhoto) {
     const photoUrl = event.messageReply.attachments[0].url;
 
@@ -50,9 +51,9 @@ module.exports.run = async function({ api, event, args }) {
     api.sendMessage("🔄 Analyzing image...", event.threadID, event.messageID);
 
     try {
-      const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gemini-flash-vision?prompt=Hello&imageUrl=', {
+      const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gemini-flash-vision', {
         params: {
-          q: input,
+          prompt: input,
           uid: uid,
           imageUrl: photoUrl
         }
@@ -65,32 +66,30 @@ module.exports.run = async function({ api, event, args }) {
       }
     } catch (error) {
       console.error("Error processing image analysis request:", error.message || error);
-      api.sendMessage("An error occurred while processing the image. Please try again.", event.threadID, event.messageID);
+      return api.sendMessage("An error occurred while processing the image. Please try again.", event.threadID, event.messageID);
     }
-
-    return;
   }
 
   if (!input) {
     return api.sendMessage(
-      "☺Hello! I'm 𝗡𝗼𝘃𝗮 𝗔𝘀𝘀𝗶𝘀𝘁𝗮𝗻𝘁 your friendly AI assistant. I'm ready to help you find information and answer your questions. How can I assist you today?.",
+      "☺ Hello! I'm 𝗡𝗼𝘃𝗮 𝗔𝘀𝘀𝗶𝘀𝘁𝗮𝗻𝘁, your friendly AI assistant. How can I assist you today?",
       event.threadID,
       event.messageID
     );
   }
 
-  api.sendMessage("🔄 Generating...", event.threadID, event.messageID);
+  api.sendMessage("🔄 Generating response...", event.threadID, event.messageID);
 
   try {
-    const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gpt-4o?query=What+is+love&uid=61577040643519', {
+    const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gpt-4o', {
       params: {
-        ask: input,
-        uid: uid,
+        query: input,
+        uid: uid
       }
     });
 
     if (!data || !data.response) {
-      return api.sendMessage("Sorry, I didn't quite catch that. Could you please try asking again?", event.threadID, event.messageID);
+      return api.sendMessage("Sorry, I didn't quite catch that. Could you please try again?", event.threadID, event.messageID);
     }
 
     const formattedResponse = data.response
