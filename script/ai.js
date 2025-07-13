@@ -1,107 +1,71 @@
-const axios = require('axios');
-
-function convertToBold(text) {
-  const boldMap = {
-    'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴',
-    'h': '𝗵', 'i': '𝗶', 'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻',
-    'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿', 's': '𝘀', 't': '𝘁', 'u': '𝘂',
-    'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇',
-    'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚',
-    'H': '𝗛', 'I': '𝗜', 'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡',
-    'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥', 'S': '𝗦', 'T': '𝗧', 'U': '𝗨',
-    'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
-  };
-
-  return text.split('').map(char => boldMap[char] || char).join('');
-}
-
 module.exports.config = {
-  name: 'nova',
-  version: '1.0.1',
-  hasPermission: 0,
-  usePrefix: false,
-  aliases: ['gpt', 'openai'],
-  description: "An AI command powered by GPT-4o.",
-  usages: "ai [prompt]",
-  credits: 'LorexAi',
+  name: "cassandra",
+  version: "1.2.6",
+  permission: 0,
+  credits: "Bogart Magalpok",
+  description: "Ask AI with or without an image using Kaiz Gemini Vision API.",
+  prefix: false,
+  premium: false,
+  category: "without prefix",
+  usage: "ai <question> | reply to image with or without a question",
   cooldowns: 3,
-  dependencies: {
+  dependency: {
     "axios": ""
   }
 };
 
-module.exports.run = async function({ api, event, args }) {
-  const input = args.join(' ');
-  const uid = event.senderID;
+module.exports.run = async function ({ api, event, args }) {
+  const axios = require("axios");
+  const { threadID, messageID, messageReply } = event;
 
-  const isPhoto = event.type === "message_reply" &&
-    event.messageReply?.attachments?.[0]?.type === "photo";
+  const API_ENDPOINT = "https://kaiz-apis.gleeze.com/api/gemini-vision";
+  const API_KEY = ""; // Your own Kaiz Api
+  const UID = Math.floor(Math.random() * 1000000).toString(); // Random UID
 
-  if (isPhoto) {
-    const photoUrl = event.messageReply.attachments[0].url;
+  try {
+    const question = args.join(" ");
+    let imageUrl = null;
 
-    if (!input) {
+    if (messageReply && messageReply.attachments.length > 0) {
+      const attachment = messageReply.attachments[0];
+      if (attachment.type === "photo" && attachment.url) {
+        imageUrl = attachment.url;
+      } else {
+        return api.sendMessage("😔 Please reply to a valid photo.", threadID, messageID);
+      }
+    }
+
+    if (!question && !imageUrl) {
       return api.sendMessage(
-        "Please provide a prompt along with the image (e.g., 'ai describe this image').",
-        event.threadID,
-        event.messageID
+        "🤖Messandra Ai\n\n👑Ako nga pala si Hara Cassandra ng Lireo ano maitutulong ko?.",
+        threadID,
+        messageID
       );
     }
 
-    api.sendMessage("🔄 Analyzing image...", event.threadID, event.messageID);
-
-    try {
-      const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gemini-flash-vision', {
-        params: {
-          prompt: input,
-          uid: uid,
-          imageUrl: photoUrl
-        }
-      });
-
-      if (data && data.response) {
-        return api.sendMessage(data.response, event.threadID, event.messageID);
-      } else {
-        return api.sendMessage("Unexpected response format from the image analysis API.", event.threadID, event.messageID);
-      }
-    } catch (error) {
-      console.error("Error processing image analysis request:", error.message || error);
-      return api.sendMessage("An error occurred while processing the image. Please try again.", event.threadID, event.messageID);
-    }
-  }
-
-  if (!input) {
-    return api.sendMessage(
-      "☺ Hello! I'm 𝗡𝗼𝘃𝗮 𝗔𝘀𝘀𝗶𝘀𝘁𝗮𝗻𝘁, your friendly AI assistant. How can I assist you today?",
-      event.threadID,
-      event.messageID
-    );
-  }
-
-  api.sendMessage("🔄 Generating response...", event.threadID, event.messageID);
-
-  try {
-    const { data } = await axios.get('https://daikyu-api.gleeze.com/api/gpt-4o', {
-      params: {
-        query: input,
-        uid: uid
-      }
+    const queryParams = new URLSearchParams({
+      q: question || "",
+      uid: UID,
+      imageUrl: imageUrl || "",
+      apikey: API_KEY
     });
 
-    if (!data || !data.response) {
-      return api.sendMessage("Sorry, I didn't quite catch that. Could you please try again?", event.threadID, event.messageID);
+    const fullUrl = `${API_ENDPOINT}?${queryParams.toString()}`;
+    const res = await axios.get(fullUrl);
+    const result = res?.data?.response;
+
+    if (!result) {
+      return api.sendMessage("⚠️ No response received from the AI API.", threadID, messageID);
     }
 
-    const formattedResponse = data.response
-      .replace(/\*\*(.*?)\*\*/g, (_, text) => convertToBold(text))
-      .replace(/##(.*?)##/g, (_, text) => convertToBold(text))
-      .replace(/###\s*/g, '')
-      .replace(/\n{3,}/g, '\n\n');
-
-    return api.sendMessage(formattedResponse, event.threadID, event.messageID);
+    return api.sendMessage(
+      `•| 𝙷𝙾𝙼𝙴𝚁 𝙰𝙸 𝙱𝙾𝚃 |•\n\n${result}\n\n•| 𝙾𝚆𝙽𝙴𝚁 : 𝙷𝙾𝙼𝙴𝚁 𝚁𝙴𝙱𝙰𝚃𝙸𝚂 |•`,
+      threadID,
+      messageID
+    );
 
   } catch (error) {
-    console.error("😥 Error processing request:", error.message || error);
-    return api.sendMessage("😥 An error occurred while processing your request. Please try again.", event.threadID, event.messageID);
+    console.error("❌ AI Error:", error?.response?.data || error.message || error);
+    return api.sendMessage("❌ An error occurred while processing your request. Please try again later.", threadID, messageID);
   }
 };
