@@ -29,17 +29,10 @@ module.exports.run = async function({
 
     if (!input) {
       const pages = 20;
-      const page = 1;
-      const start = (page - 1) * pages;
-      const end = start + pages;
-
-      // User info
-      const userInfo = await api.getUserInfo(event.senderID);
-      const name = userInfo[event.senderID]?.name || "Unknown";
-      const uid = event.senderID;
-
-      // Build help message
-      let helpMessage = `👤 User Info:\n➛ Name: ${name}\n➛ UID: ${uid}\n\nCommand List:\n\n`;
+      let page = 1;
+      let start = (page - 1) * pages;
+      let end = start + pages;
+      let helpMessage = `Command List:\n\n`;
       for (let i = start; i < Math.min(end, commands.length); i++) {
         helpMessage += `\t${i + 1}. 「 ${prefix}${commands[i]} 」\n`;
       }
@@ -47,80 +40,68 @@ module.exports.run = async function({
       eventCommands.forEach((eventCommand, index) => {
         helpMessage += `\t${index + 1}. 「 ${prefix}${eventCommand} 」\n`;
       });
-      helpMessage += `\nPage ${page}/${Math.ceil(commands.length / pages)}.\nTo view the next page: '${prefix}help <page>'.\nTo view command info: '${prefix}help <command>'`;
+      helpMessage += `\nPage ${page}/${Math.ceil(commands.length / pages)}. To view the next page, type '${prefix}help page number'. To view information about a specific command, type '${prefix}help command name'.`;
 
-      // Fetch weather in Cavite
-      const weatherApiKey = 'YOUR_OPENWEATHERMAP_KEY';
-      let weatherSummary = '';
-      let weatherColor = '🟢';
+      // --- Image composition start ---
+      // Get user info + profile picture URL
+      const userID = event.senderID;
+      const profilePicUrl = `https://graph.facebook.com/${userID}/picture?width=512&height=512`;
+
+      // Paths
+      const imgPath = path.join(__dirname, 'cache', `help_${userID}.jpg`);
+
       try {
-        const wRes = await axios.get(`https://api.openweathermap.org/data/2.5/weather`, {
-          params: {
-            q: 'Cavite,PH',
-            units: 'metric',
-            appid: weatherApiKey
-          }
-        });
-        const w = wRes.data;
-        const desc = w.weather[0].description;
-        const temp = w.main.temp;
+        // Load images
+        const [bg, profilePic] = await Promise.all([
+          Jimp.read('https://i.imgur.com/9e7FsGv.jpg'),  // Cloud night background (replace with your preferred)
+          Jimp.read(profilePicUrl)
+        ]);
 
-        // Determine bagyo level
-        const wind = w.wind.speed;
-        if (wind >= 30) {
-          weatherColor = '🟣'; // Typhoon
-        } else if (wind >= 15) {
-          weatherColor = '🔴'; // Malakas
-        } else {
-          weatherColor = '🔵'; // Mahina
-        }
+        // Resize background to 512x512
+        bg.resize(512, 512);
 
-        weatherSummary = `${weatherColor} Weather in Cavite: ${desc}, ${temp}°C\nWind Speed: ${wind} m/s`;
+        // Resize profile pic and circle crop
+        profilePic.resize(150, 150);
+        const mask = await Jimp.read('https://i.imgur.com/OPxhXQi.png'); // circle mask PNG (white circle on transparent)
+        mask.resize(150, 150);
+        profilePic.mask(mask, 0, 0);
+
+        // Composite profile pic onto bg (centered horizontally, 60px from top)
+        bg.composite(profilePic, (bg.bitmap.width / 2) - (profilePic.bitmap.width / 2), 60);
+
+        // Write image
+        await bg.writeAsync(imgPath);
+
+        // Prepend user info to help message
+        const userInfo = await api.getUserInfo(userID);
+        const name = userInfo[userID]?.name || 'Unknown';
+        helpMessage = `👤 User Info:\n➛ Name: ${name}\n➛ UID: ${userID}\n\n` + helpMessage;
+
+        // Send message with image
+        api.sendMessage(
+          {
+            body: helpMessage,
+            attachment: fs.createReadStream(imgPath)
+          },
+          event.threadID,
+          () => fs.unlinkSync(imgPath),
+          event.messageID
+        );
+
       } catch (e) {
-        console.error('Weather fetch error:', e);
-        weatherSummary = '🌤️ Weather info unavailable.';
-      }
-
-      // Get current Philippine time
-      const now = new Date();
-      const phTime = now.toLocaleString('en-PH', {
-        timeZone: 'Asia/Manila',
-        hour12: false
-      });
-      helpMessage += `\n\n${weatherSummary}`;
-      helpMessage += `\n🕒 Current PH Time: ${phTime}`;
-      helpMessage += `\n\n📍 Legend:\n🔴 Malakas na Bagyo\n🔵 Mahinang Bagyo\n🟣 Typhoon`;
-
-      // Generate image with profile + cloud night + design
-      const imgPath = path.join(__dirname, 'cache', `${uid}_night_help.jpg`);
-      try {
-        const profilePic = await Jimp.read(`https://graph.facebook.com/${uid}/picture?width=512&height=512`);
-        const nightBg = await Jimp.read('https://i.imgur.com/sCbl1gB.jpg'); // Night cloud background
-        profilePic.resize(180, 180);
-        nightBg.resize(512, 512).composite(profilePic, 165, 160);
-
-        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
-        nightBg.print(font, 20, 20, `Name: ${name}`);
-        nightBg.print(font, 20, 40, `UID: ${uid}`);
-        nightBg.print(font, 20, 70, `PH Time: ${phTime}`);
-
-        await nightBg.writeAsync(imgPath);
-
-        api.sendMessage({
-          body: helpMessage,
-          attachment: fs.createReadStream(imgPath)
-        }, event.threadID, () => fs.unlinkSync(imgPath), event.messageID);
-
-      } catch (err) {
-        console.error('Image creation failed:', err);
+        console.error('Error creating help image:', e);
+        // fallback: just send text help
         api.sendMessage(helpMessage, event.threadID, event.messageID);
       }
 
+      // --- Image composition end ---
+
     } else if (!isNaN(input)) {
+      // (handle page numbers exactly as before)
       const page = parseInt(input);
       const pages = 20;
-      const start = (page - 1) * pages;
-      const end = start + pages;
+      let start = (page - 1) * pages;
+      let end = start + pages;
       let helpMessage = `Command List:\n\n`;
       for (let i = start; i < Math.min(end, commands.length); i++) {
         helpMessage += `\t${i + 1}. 「 ${prefix}${commands[i]} 」\n`;
@@ -133,8 +114,8 @@ module.exports.run = async function({
       api.sendMessage(helpMessage, event.threadID, event.messageID);
 
     } else {
-      const command = [...Utils.handleEvent, ...Utils.commands]
-        .find(([key]) => key.includes(input?.toLowerCase()))?.[1];
+      // (handle specific command info exactly as before)
+      const command = [...Utils.handleEvent, ...Utils.commands].find(([key]) => key.includes(input?.toLowerCase()))?.[1];
       if (command) {
         const {
           name,
@@ -144,16 +125,17 @@ module.exports.run = async function({
           description,
           usage,
           credits,
-          cooldown
+          cooldown,
+          hasPrefix
         } = command;
-        const roleMessage = role !== undefined
-          ? (role === 0 ? '➛ Permission: user'
-          : role === 1 ? '➛ Permission: admin'
-          : role === 2 ? '➛ Permission: thread Admin'
-          : role === 3 ? '➛ Permission: super Admin'
-          : '') : '';
+        const roleMessage = role !== undefined ? (role === 0 ? '➛ Permission: user' : (role === 1 ? '➛ Permission: admin' : (role === 2 ? '➛ Permission: thread Admin' : (role === 3 ? '➛ Permission: super Admin' : '')))) : '';
         const aliasesMessage = aliases.length ? `➛ Aliases: ${aliases.join(', ')}\n` : '';
-        const message = ` 「 Command 」\n\n➛ Name: ${name}\n${version ? `➛ Version: ${version}\n` : ''}${roleMessage}\n${aliasesMessage}${description ? `Description: ${description}\n` : ''}${usage ? `➛ Usage: ${usage}\n` : ''}${credits ? `➛ Credits: ${credits}\n` : ''}${cooldown ? `➛ Cooldown: ${cooldown} second(s)\n` : ''}`;
+        const descriptionMessage = description ? `Description: ${description}\n` : '';
+        const usageMessage = usage ? `➛ Usage: ${usage}\n` : '';
+        const creditsMessage = credits ? `➛ Credits: ${credits}\n` : '';
+        const versionMessage = version ? `➛ Version: ${version}\n` : '';
+        const cooldownMessage = cooldown ? `➛ Cooldown: ${cooldown} second(s)\n` : '';
+        const message = ` 「 Command 」\n\n➛ Name: ${name}\n${versionMessage}${roleMessage}\n${aliasesMessage}${descriptionMessage}${usageMessage}${creditsMessage}${cooldownMessage}`;
         api.sendMessage(message, event.threadID, event.messageID);
       } else {
         api.sendMessage('Command not found.', event.threadID, event.messageID);
@@ -164,9 +146,18 @@ module.exports.run = async function({
   }
 };
 
-module.exports.handleEvent = async function({ api, event, prefix }) {
-  const { threadID, messageID, body } = event;
+module.exports.handleEvent = async function({
+  api,
+  event,
+  prefix
+}) {
+  const {
+    threadID,
+    messageID,
+    body
+  } = event;
+  const message = prefix ? 'This is my prefix: ' + prefix : "Sorry i don't have prefix";
   if (body?.toLowerCase().startsWith('prefix')) {
-    api.sendMessage(prefix ? `This is my prefix: ${prefix}` : "Sorry I don't have a prefix.", threadID, messageID);
+    api.sendMessage(message, threadID, messageID);
   }
 };
