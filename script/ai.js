@@ -24,7 +24,7 @@ module.exports.config = {
   description: "Ask Deepseek V3 AI by Kaizenji.",
   usages: "ai2 [prompt]",
   credits: 'Kaizenji',
-  cooldowns: 3,
+  cooldowns: 0,
   dependencies: {
     "axios": ""
   }
@@ -36,7 +36,7 @@ module.exports.run = async function({ api, event, args }) {
 
   if (!input) {
     return api.sendMessage(
-      "🤔Mag type ka kung ano maitutulong ko sayo?",
+      "🤔Ako si Cassandra at Mag type ka kung ano maitutulong ko sayo?",
       event.threadID,
       event.messageID
     );
