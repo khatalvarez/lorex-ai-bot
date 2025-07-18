@@ -18,7 +18,7 @@ module.exports.run = async function ({ api, event, args }) {
   const axios = require("axios");
   const { threadID, messageID, messageReply } = event;
 
-  const API_ENDPOINT = "https://kaiz-apis.gleeze.com/api/gemini-vision";
+  const API_ENDPOINT = "https://rapido.zetsu.xyz/api/gemini?chat=&imageUrl=";
   const API_KEY = ""; // Your own Kaiz Api
   const UID = Math.floor(Math.random() * 1000000).toString(); // Random UID
 
