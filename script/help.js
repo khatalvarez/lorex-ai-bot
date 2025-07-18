@@ -14,69 +14,97 @@ module.exports.config = {
   credits: 'Developer',
 };
 
-module.exports.run = async function({ api, event, enableCommands, args, Utils, prefix }) {
+module.exports.run = async function({
+  api,
+  event,
+  enableCommands,
+  args,
+  Utils,
+  prefix
+}) {
   const input = args.join(' ');
   try {
     const eventCommands = enableCommands[1].handleEvent;
     const commands = enableCommands[0].commands;
 
     if (!input) {
-      const pages = 20, page = 1;
-      const start = (page - 1) * pages, end = start + pages;
-
-      // Build help list
-      let helpMessage = `Command List:\n\n`;
-      for (let i = start; i < Math.min(end, commands.length); i++) {
-        helpMessage += `\t${i + 1}. 「 ${prefix}${commands[i]} 」\n`;
-      }
-      helpMessage += `\nEvent List:\n\n`;
-      eventCommands.forEach((evt, idx) => {
-        helpMessage += `\t${idx + 1}. 「 ${prefix}${evt} 」\n`;
-      });
-      helpMessage += `\nPage ${page}/${Math.ceil(commands.length / pages)}. Use '${prefix}help <page>' or '${prefix}help <command>'.`;
+      const pages = 20;
+      const page = 1;
+      const start = (page - 1) * pages;
+      const end = start + pages;
 
       // User info
       const userInfo = await api.getUserInfo(event.senderID);
       const name = userInfo[event.senderID]?.name || "Unknown";
       const uid = event.senderID;
-      helpMessage = `👤 User Info:\n➛ Name: ${name}\n➛ UID: ${uid}\n\n` + helpMessage;
 
-      // Fetch weather
+      // Build help message
+      let helpMessage = `👤 User Info:\n➛ Name: ${name}\n➛ UID: ${uid}\n\nCommand List:\n\n`;
+      for (let i = start; i < Math.min(end, commands.length); i++) {
+        helpMessage += `\t${i + 1}. 「 ${prefix}${commands[i]} 」\n`;
+      }
+      helpMessage += '\nEvent List:\n\n';
+      eventCommands.forEach((eventCommand, index) => {
+        helpMessage += `\t${index + 1}. 「 ${prefix}${eventCommand} 」\n`;
+      });
+      helpMessage += `\nPage ${page}/${Math.ceil(commands.length / pages)}.\nTo view the next page: '${prefix}help <page>'.\nTo view command info: '${prefix}help <command>'`;
+
+      // Fetch weather in Cavite
       const weatherApiKey = 'YOUR_OPENWEATHERMAP_KEY';
       let weatherSummary = '';
+      let weatherColor = '🟢';
       try {
-        const wRes = await axios.get(
-          'https://api.openweathermap.org/data/2.5/weather', {
-            params: { q: 'Manila,PH', units: 'metric', appid: weatherApiKey }
+        const wRes = await axios.get(`https://api.openweathermap.org/data/2.5/weather`, {
+          params: {
+            q: 'Cavite,PH',
+            units: 'metric',
+            appid: weatherApiKey
           }
-        );
+        });
         const w = wRes.data;
-        weatherSummary = `🌤️ Weather in ${w.name}: ${w.weather[0].description}, ${w.main.temp}°C (feels like ${w.main.feels_like}°C)`;
+        const desc = w.weather[0].description;
+        const temp = w.main.temp;
+
+        // Determine bagyo level
+        const wind = w.wind.speed;
+        if (wind >= 30) {
+          weatherColor = '🟣'; // Typhoon
+        } else if (wind >= 15) {
+          weatherColor = '🔴'; // Malakas
+        } else {
+          weatherColor = '🔵'; // Mahina
+        }
+
+        weatherSummary = `${weatherColor} Weather in Cavite: ${desc}, ${temp}°C\nWind Speed: ${wind} m/s`;
       } catch (e) {
-        console.error('Weather error:', e);
+        console.error('Weather fetch error:', e);
         weatherSummary = '🌤️ Weather info unavailable.';
       }
-      helpMessage += `\n\n${weatherSummary}`;
 
-      // Fetch current time in PH
+      // Get current Philippine time
       const now = new Date();
-      const manilaTime = now.toLocaleString('en-US', { timeZone: 'Asia/Manila', hour12: false });
-      helpMessage += `\n🕒 Current Philippine time: ${manilaTime}`;
+      const phTime = now.toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila',
+        hour12: false
+      });
+      helpMessage += `\n\n${weatherSummary}`;
+      helpMessage += `\n🕒 Current PH Time: ${phTime}`;
+      helpMessage += `\n\n📍 Legend:\n🔴 Malakas na Bagyo\n🔵 Mahinang Bagyo\n🟣 Typhoon`;
 
-      // Compose image
-      const imgPath = path.join(__dirname, 'cache', `${uid}_help.jpg`);
+      // Generate image with profile + cloud night + design
+      const imgPath = path.join(__dirname, 'cache', `${uid}_night_help.jpg`);
       try {
         const profilePic = await Jimp.read(`https://graph.facebook.com/${uid}/picture?width=512&height=512`);
-        const cloudBg = await Jimp.read('https://i.imgur.com/BKYdBlb.jpg');
+        const nightBg = await Jimp.read('https://i.imgur.com/sCbl1gB.jpg'); // Night cloud background
+        profilePic.resize(180, 180);
+        nightBg.resize(512, 512).composite(profilePic, 165, 160);
 
-        profilePic.resize(200, 200);
-        cloudBg.resize(512, 512).composite(profilePic, 156, 150);
+        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_WHITE);
+        nightBg.print(font, 20, 20, `Name: ${name}`);
+        nightBg.print(font, 20, 40, `UID: ${uid}`);
+        nightBg.print(font, 20, 70, `PH Time: ${phTime}`);
 
-        const font = await Jimp.loadFont(Jimp.FONT_SANS_16_BLACK);
-        cloudBg.print(font, 10, 10, `Name: ${name}`);
-        cloudBg.print(font, 10, 30, `UID: ${uid}`);
-
-        await cloudBg.writeAsync(imgPath);
+        await nightBg.writeAsync(imgPath);
 
         api.sendMessage({
           body: helpMessage,
@@ -89,57 +117,56 @@ module.exports.run = async function({ api, event, enableCommands, args, Utils, p
       }
 
     } else if (!isNaN(input)) {
-      // Paged view
-      const pageNum = parseInt(input);
+      const page = parseInt(input);
       const pages = 20;
-      const start = (pageNum - 1) * pages, end = start + pages;
-      let message = `Command List:\n\n`;
+      const start = (page - 1) * pages;
+      const end = start + pages;
+      let helpMessage = `Command List:\n\n`;
       for (let i = start; i < Math.min(end, commands.length); i++) {
-        message += `\t${i + 1}. 「 ${prefix}${commands[i]} 」\n`;
+        helpMessage += `\t${i + 1}. 「 ${prefix}${commands[i]} 」\n`;
       }
-      message += `\nEvent List:\n\n`;
-      eventCommands.forEach((evt, idx) => {
-        message += `\t${idx + 1}. 「 ${prefix}${evt} 」\n`;
+      helpMessage += '\nEvent List:\n\n';
+      eventCommands.forEach((eventCommand, index) => {
+        helpMessage += `\t${index + 1}. 「 ${prefix}${eventCommand} 」\n`;
       });
-      message += `\nPage ${pageNum} of ${Math.ceil(commands.length / pages)}`;
-      api.sendMessage(message, event.threadID, event.messageID);
+      helpMessage += `\nPage ${page} of ${Math.ceil(commands.length / pages)}`;
+      api.sendMessage(helpMessage, event.threadID, event.messageID);
 
     } else {
-      // Show detailed command info
-      const cmd = [...Utils.handleEvent, ...Utils.commands]
+      const command = [...Utils.handleEvent, ...Utils.commands]
         .find(([key]) => key.includes(input?.toLowerCase()))?.[1];
-      if (cmd) {
+      if (command) {
         const {
-          name, version, role,
-          aliases = [], description,
-          usage, credits, cooldown
-        } = cmd;
-        const roleMsg = role === 0 ? '➛ Permission: user'
-                      : role === 1 ? '➛ Permission: admin'
-                      : role === 2 ? '➛ Permission: thread Admin'
-                      : role === 3 ? '➛ Permission: super Admin' : '';
-        const aliasMsg = aliases.length ? `➛ Aliases: ${aliases.join(', ')}\n` : '';
-        const msg = ` 「 Command 」\n\n➛ Name: ${name}\n` +
-                    `${version ? `➛ Version: ${version}\n` : ''}` +
-                    `${roleMsg}\n` +
-                    `${aliasMsg}` +
-                    `${description ? `Description: ${description}\n` : ''}` +
-                    `${usage ? `➛ Usage: ${usage}\n` : ''}` +
-                    `${credits ? `➛ Credits: ${credits}\n` : ''}` +
-                    `${cooldown ? `➛ Cooldown: ${cooldown}s\n` : ''}`;
-        api.sendMessage(msg, event.threadID, event.messageID);
+          name,
+          version,
+          role,
+          aliases = [],
+          description,
+          usage,
+          credits,
+          cooldown
+        } = command;
+        const roleMessage = role !== undefined
+          ? (role === 0 ? '➛ Permission: user'
+          : role === 1 ? '➛ Permission: admin'
+          : role === 2 ? '➛ Permission: thread Admin'
+          : role === 3 ? '➛ Permission: super Admin'
+          : '') : '';
+        const aliasesMessage = aliases.length ? `➛ Aliases: ${aliases.join(', ')}\n` : '';
+        const message = ` 「 Command 」\n\n➛ Name: ${name}\n${version ? `➛ Version: ${version}\n` : ''}${roleMessage}\n${aliasesMessage}${description ? `Description: ${description}\n` : ''}${usage ? `➛ Usage: ${usage}\n` : ''}${credits ? `➛ Credits: ${credits}\n` : ''}${cooldown ? `➛ Cooldown: ${cooldown} second(s)\n` : ''}`;
+        api.sendMessage(message, event.threadID, event.messageID);
       } else {
         api.sendMessage('Command not found.', event.threadID, event.messageID);
       }
     }
-
   } catch (error) {
-    console.error(error);
+    console.log(error);
   }
 };
 
 module.exports.handleEvent = async function({ api, event, prefix }) {
-  if (event.body?.toLowerCase().startsWith('prefix')) {
-    api.sendMessage(`This is my prefix: ${prefix}`, event.threadID, event.messageID);
+  const { threadID, messageID, body } = event;
+  if (body?.toLowerCase().startsWith('prefix')) {
+    api.sendMessage(prefix ? `This is my prefix: ${prefix}` : "Sorry I don't have a prefix.", threadID, messageID);
   }
 };
