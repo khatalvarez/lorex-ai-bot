@@ -1,71 +1,71 @@
+const axios = require('axios');
+
+function convertToBold(text) {
+  const boldMap = {
+    'a': '𝗮', 'b': '𝗯', 'c': '𝗰', 'd': '𝗱', 'e': '𝗲', 'f': '𝗳', 'g': '𝗴',
+    'h': '𝗵', 'i': '𝗶', 'j': '𝗷', 'k': '𝗸', 'l': '𝗹', 'm': '𝗺', 'n': '𝗻',
+    'o': '𝗼', 'p': '𝗽', 'q': '𝗾', 'r': '𝗿', 's': '𝘀', 't': '𝘁', 'u': '𝘂',
+    'v': '𝘃', 'w': '𝘄', 'x': '𝘅', 'y': '𝘆', 'z': '𝘇',
+    'A': '𝗔', 'B': '𝗕', 'C': '𝗖', 'D': '𝗗', 'E': '𝗘', 'F': '𝗙', 'G': '𝗚',
+    'H': '𝗛', 'I': '𝗜', 'J': '𝗝', 'K': '𝗞', 'L': '𝗟', 'M': '𝗠', 'N': '𝗡',
+    'O': '𝗢', 'P': '𝗣', 'Q': '𝗤', 'R': '𝗥', 'S': '𝗦', 'T': '𝗧', 'U': '𝗨',
+    'V': '𝗩', 'W': '𝗪', 'X': '𝗫', 'Y': '𝗬', 'Z': '𝗭',
+  };
+
+  return text.split('').map(char => boldMap[char] || char).join('');
+}
+
 module.exports.config = {
-  name: "cassandra",
-  version: "1.2.6",
-  permission: 0,
-  credits: "Bogart Magalpok",
-  description: "Ask AI with or without an image using Kaiz Gemini Vision API.",
-  prefix: false,
-  premium: false,
-  category: "without prefix",
-  usage: "ai <question> | reply to image with or without a question",
+  name: 'cassandra',
+  version: '1.0.0',
+  hasPermission: 0,
+  usePrefix: false,
+  aliases: ['deepseek', 'ds'],
+  description: "Ask Deepseek V3 AI by Kaizenji.",
+  usages: "ai2 [prompt]",
+  credits: 'Kaizenji',
   cooldowns: 3,
-  dependency: {
+  dependencies: {
     "axios": ""
   }
 };
 
-module.exports.run = async function ({ api, event, args }) {
-  const axios = require("axios");
-  const { threadID, messageID, messageReply } = event;
+module.exports.run = async function({ api, event, args }) {
+  const input = args.join(' ');
+  const uid = event.senderID;
 
-  const API_ENDPOINT = "https://rapido.zetsu.xyz/api/gemini?chat=&imageUrl=";
-  const API_KEY = ""; // Your own Kaiz Api
-  const UID = Math.floor(Math.random() * 1000000).toString(); // Random UID
+  if (!input) {
+    return api.sendMessage(
+      "🤔Mag type ka kung ano maitutulong ko sayo?",
+      event.threadID,
+      event.messageID
+    );
+  }
+
+  api.sendMessage("🔃Sasagutin kuna maghintay ka...", event.threadID, event.messageID);
 
   try {
-    const question = args.join(" ");
-    let imageUrl = null;
-
-    if (messageReply && messageReply.attachments.length > 0) {
-      const attachment = messageReply.attachments[0];
-      if (attachment.type === "photo" && attachment.url) {
-        imageUrl = attachment.url;
-      } else {
-        return api.sendMessage("😔 Please reply to a valid photo.", threadID, messageID);
+    const { data } = await axios.get('https://kaiz-apis.gleeze.com/api/deepseek-v3', {
+      params: {
+        ask: input,
+        apikey: 'acb7e0e8-bbc3-4697-bf64-1f3c6231dee7'
       }
-    }
-
-    if (!question && !imageUrl) {
-      return api.sendMessage(
-        "🤖Messandra Ai\n\n👑Ako nga pala si Hara Cassandra ng Lireo ano maitutulong ko?.",
-        threadID,
-        messageID
-      );
-    }
-
-    const queryParams = new URLSearchParams({
-      q: question || "",
-      uid: UID,
-      imageUrl: imageUrl || "",
-      apikey: API_KEY
     });
 
-    const fullUrl = `${API_ENDPOINT}?${queryParams.toString()}`;
-    const res = await axios.get(fullUrl);
-    const result = res?.data?.response;
-
-    if (!result) {
-      return api.sendMessage("⚠️ No response received from the AI API.", threadID, messageID);
+    if (!data || !data.response) {
+      return api.sendMessage("No response from Deepseek V3. Please try again.", event.threadID, event.messageID);
     }
 
-    return api.sendMessage(
-      `•| 𝙷𝙾𝙼𝙴𝚁 𝙰𝙸 𝙱𝙾𝚃 |•\n\n${result}\n\n•| 𝙾𝚆𝙽𝙴𝚁 : 𝙷𝙾𝙼𝙴𝚁 𝚁𝙴𝙱𝙰𝚃𝙸𝚂 |•`,
-      threadID,
-      messageID
-    );
+    const formattedResponse = data.response
+      .replace(/\*\*(.*?)\*\*/g, (_, text) => convertToBold(text))
+      .replace(/##(.*?)##/g, (_, text) => convertToBold(text))
+      .replace(/###\s*/g, '')
+      .replace(/\n{3,}/g, '\n\n');
+
+    return api.sendMessage(formattedResponse, event.threadID, event.messageID);
 
   } catch (error) {
-    console.error("❌ AI Error:", error?.response?.data || error.message || error);
-    return api.sendMessage("❌ An error occurred while processing your request. Please try again later.", threadID, messageID);
+    console.error("⛔ Error in Deepseek V3:", error.message || error);
+    return api.sendMessage("⛔ An error occurred while processing your request. Please try again.", event.threadID, event.messageID);
   }
 };
