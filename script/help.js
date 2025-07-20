@@ -1,132 +1,47 @@
-const fs = require('fs');
-const path = require('path');
-
 module.exports.config = {
   name: 'help',
   version: '1.0.0',
   role: 0,
   hasPrefix: true,
-  aliases: ['info'],
-  description: "Beginner's guide",
-  usage: "Help [page] or [command]",
-  credits: 'Developer',
+  description: 'Show help message with auto bold Unicode font',
+  usage: 'help',
+  credits: 'ChatGPT'
 };
 
-module.exports.run = async function({
-  api,
-  event,
-  enableCommands,
-  args,
-  Utils,
-  prefix
-}) {
-  const input = args.join(' ');
-  try {
-    const eventCommands = enableCommands[1].handleEvent;
-    const commands = enableCommands[0].commands;
+// Helper: convert normal text to bold Unicode letters (basic A-Z, a-z, 0-9)
+function toBold(text) {
+  const normal = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const bold = '𝗔𝗕𝗖𝗗𝗘𝗙𝗚𝗛𝗜𝗝𝗞𝗟𝗠𝗡𝗢𝗣𝗤𝗥𝗦𝗧𝗨𝗩𝗪𝗫𝗬𝗭𝗮𝗯𝗰𝗱𝗲𝗳𝗴𝗵𝗶𝗷𝗸𝗹𝗺𝗻𝗼𝗽𝗾𝗿𝘀𝘁𝘂𝘃𝘄𝘅𝘆𝘇𝟬𝟭𝟮𝟯𝟰𝟱𝟲𝟳𝟴𝟵';
+  return text.split('').map(c => {
+    const index = normal.indexOf(c);
+    return index !== -1 ? bold[index] : c;
+  }).join('');
+}
 
-    // === DEFAULT HELP PAGE (NO INPUT) ===
-    if (!input) {
-      const page = 1;
-      const perPage = 20;
-      const start = (page - 1) * perPage;
-      const end = start + perPage;
-      let helpMessage = `**COMMAND LIST**\n\n`;
+const helpText = `
+${toBold('🤖 Bot Help Menu')}
 
-      for (let i = start; i < Math.min(end, commands.length); i++) {
-        helpMessage += `${i + 1}. ${prefix}${commands[i]}\n`;
-      }
+${toBold('Commands:')}
 
-      helpMessage += `\n**EVENT HANDLERS:**\n`;
-      eventCommands.forEach((eventCommand, index) => {
-        helpMessage += `${index + 1}. ${prefix}${eventCommand}\n`;
-      });
+- ${toBold('games [guess|riddle|roll|rps] [input]')}
+  Play fun games like guess number, riddles, roll dice, or rock-paper-scissors.
 
-      helpMessage += `\nPage ${page}/${Math.ceil(commands.length / perPage)}\n`;
-      helpMessage += `Type '${prefix}help [page]' to navigate or '${prefix}help [command]' for details.`;
+- ${toBold('garden')}
+  Manage your virtual garden 🌱: plant seeds, water plants, harvest fruits.
 
-      // Send with logo image
-      const imagePath = path.join(__dirname, 'assets', 'encantadia_logo.jpg');
-      const imageStream = fs.createReadStream(imagePath);
+- ${toBold('system')}
+  Show system info like RAM, CPU, uptime.
 
-      return api.sendMessage({
-        body: helpMessage,
-        attachment: imageStream
-      }, event.threadID, event.messageID);
-    }
+- ${toBold('help')}
+  Show this help message.
 
-    // === PAGINATED HELP ===
-    else if (!isNaN(input)) {
-      const page = parseInt(input);
-      const perPage = 20;
-      const start = (page - 1) * perPage;
-      const end = start + perPage;
-      let helpMessage = `**COMMAND LIST** (Page ${page})\n\n`;
+${toBold('Usage:')}  
+Type the command prefix + command name to run a command.  
+Example: ${toBold('!games guess 7')}
 
-      for (let i = start; i < Math.min(end, commands.length); i++) {
-        helpMessage += `${i + 1}. ${prefix}${commands[i]}\n`;
-      }
+Enjoy! 🎉
+`;
 
-      helpMessage += `\n**EVENT HANDLERS:**\n`;
-      eventCommands.forEach((eventCommand, index) => {
-        helpMessage += `${index + 1}. ${prefix}${eventCommand}\n`;
-      });
-
-      helpMessage += `\nPage ${page} of ${Math.ceil(commands.length / perPage)}\n`;
-      helpMessage += `Use '${prefix}help [page]' to navigate.`;
-      return api.sendMessage(helpMessage, event.threadID, event.messageID);
-    }
-
-    // === SPECIFIC COMMAND HELP ===
-    else {
-      const command = [...Utils.handleEvent, ...Utils.commands].find(([key]) =>
-        key.includes(input.toLowerCase())
-      )?.[1];
-
-      if (command) {
-        const {
-          name,
-          version,
-          role,
-          aliases = [],
-          description,
-          usage,
-          credits,
-          cooldown,
-        } = command;
-
-        const roleMessage = role !== undefined
-          ? (role === 0 ? 'User' : role === 1 ? 'Admin' : role === 2 ? 'Thread Admin' : 'Super Admin')
-          : 'Unknown';
-
-        let infoMessage = `**COMMAND INFO**\n\n`;
-        infoMessage += `• Name: ${name}\n`;
-        infoMessage += `• Version: ${version || '1.0.0'}\n`;
-        infoMessage += `• Permission: ${roleMessage}\n`;
-        if (aliases.length) infoMessage += `• Aliases: ${aliases.join(', ')}\n`;
-        if (description) infoMessage += `• Description: ${description}\n`;
-        if (usage) infoMessage += `• Usage: ${usage}\n`;
-        if (cooldown) infoMessage += `• Cooldown: ${cooldown} second(s)\n`;
-        if (credits) infoMessage += `• Credits: ${credits}\n`;
-
-        return api.sendMessage(infoMessage, event.threadID, event.messageID);
-      } else {
-        return api.sendMessage('Command not found.', event.threadID, event.messageID);
-      }
-    }
-  } catch (error) {
-    console.error(error);
-    api.sendMessage('An error occurred while processing your help request.', event.threadID, event.messageID);
-  }
-};
-
-module.exports.handleEvent = async function({ api, event, prefix }) {
-  const { threadID, messageID, body } = event;
-  const message = prefix
-    ? `System prefix: ${prefix}`
-    : `Sorry, I don't have a prefix configured.`;
-
-  if (body?.toLowerCase().startsWith('prefix')) {
-    api.sendMessage(message, threadID, messageID);
-  }
+module.exports.run = async function({ api, event }) {
+  return api.sendMessage(helpText, event.threadID, event.messageID);
 };
