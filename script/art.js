@@ -1,25 +1,71 @@
+const fs = require('fs');
+const dataFile = './gamesData.json';
+
 module.exports.config = {
   name: 'games',
-  version: '1.0.0',
+  version: '1.3.0',
   role: 0,
   hasPrefix: true,
   aliases: ['game'],
-  description: 'Play games: guess number, riddle, roll, rps',
-  usage: 'games [guess|riddle|roll|rps] [input]',
+  description: 'Play games: guess number, riddle, roll, rps, petbattle, leaderboard, toplist, balance',
+  usage: 'games [guess|riddle|roll|rps|petbattle|leaderboard|toplist|balance] [input]',
   credits: 'OpenAI'
 };
 
+// Default riddles with emojis
 const riddles = [
-  { q: "What has keys but can't open locks?", a: "keyboard" },
-  { q: "What has a neck but no head?", a: "bottle" },
-  { q: "What has hands but can't clap?", a: "clock" }
+  { q: "What has keys but can't open locks? 🔑", a: "keyboard" },
+  { q: "What has a neck but no head? 🍼", a: "bottle" },
+  { q: "What has hands but can't clap? ⏰", a: "clock" }
 ];
 
+// Data store with persistence
+let data = {
+  balances: {},
+  leaderboard: {},
+  petBattleData: {}
+};
+
+function loadData() {
+  if (fs.existsSync(dataFile)) {
+    try {
+      const raw = fs.readFileSync(dataFile);
+      data = JSON.parse(raw);
+    } catch (e) {
+      console.error('Error reading games data:', e);
+    }
+  }
+}
+
+function saveData() {
+  try {
+    fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error('Error saving games data:', e);
+  }
+}
+
+loadData();
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function ensureBalance(userID) {
+  if (!(userID in data.balances)) {
+    data.balances[userID] = 0;
+    saveData();
+  }
+}
+
 module.exports.run = async function({ api, event, args }) {
+  const senderID = event.senderID;
+  const threadID = event.threadID;
+
   if (args.length === 0) {
     return api.sendMessage(
-      'Please choose a game:\n- guess [number]\n- riddle [answer]\n- roll\n- rps [rock|paper|scissors|jack|empoy]',
-      event.threadID,
+      '🎮 Please choose a game:\n- guess [number]\n- riddle [answer]\n- roll\n- rps [rock|paper|scissors|jack|empoy]\n- petbattle [attack|heal|status]\n- leaderboard\n- toplist\n- balance',
+      threadID,
       event.messageID
     );
   }
@@ -27,44 +73,53 @@ module.exports.run = async function({ api, event, args }) {
   const game = args[0].toLowerCase();
   const input = args.slice(1).join(' ').toLowerCase();
 
+  ensureBalance(senderID);
+
   // --- GUESS THE NUMBER ---
   if (game === 'guess') {
     const userGuess = parseInt(input);
     if (isNaN(userGuess) || userGuess < 1 || userGuess > 10) {
-      return api.sendMessage('Please enter a number between 1 and 10. Example: games guess 7', event.threadID, event.messageID);
+      return api.sendMessage('❌ Please enter a number between 1 and 10. Example: games guess 7', threadID, event.messageID);
     }
-    const randomNumber = Math.floor(Math.random() * 10) + 1;
+    const randomNumber = randomInt(1, 10);
     if (userGuess === randomNumber) {
-      return api.sendMessage(`Correct! The number was ${randomNumber}. You win!`, event.threadID, event.messageID);
+      data.balances[senderID] += 5;
+      saveData();
+      return api.sendMessage(`🎉 Correct! The number was ${randomNumber}. You win 5 coins! 💰\nYour balance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
     } else {
-      return api.sendMessage(`Wrong guess! The number was ${randomNumber}. Try again!`, event.threadID, event.messageID);
+      return api.sendMessage(`❌ Wrong guess! The number was ${randomNumber}. Try again! 🤞`, threadID, event.messageID);
     }
   }
 
   // --- RIDDLE ---
   if (game === 'riddle') {
     if (!input) {
-      // Give a riddle
-      const r = riddles[Math.floor(Math.random() * riddles.length)];
-      return api.sendMessage(`Riddle: ${r.q}\nAnswer by typing: games riddle [your answer]`, event.threadID, event.messageID);
+      const r = riddles[randomInt(0, riddles.length - 1)];
+      return api.sendMessage(`🧩 Riddle: ${r.q}\nAnswer by typing: games riddle [your answer]`, threadID, event.messageID);
     } else {
-      // Check answer
       const correct = riddles.some(r => r.a === input);
-      return api.sendMessage(correct ? 'Correct! 🎉' : 'Wrong answer, try again.', event.threadID, event.messageID);
+      if (correct) {
+        data.balances[senderID] += 5;
+        saveData();
+        return api.sendMessage(`🎉 Correct! You earned 5 coins! 💰\nBalance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
+      } else {
+        return api.sendMessage('❌ Wrong answer, try again.', threadID, event.messageID);
+      }
     }
   }
 
   // --- ROLL DIE ---
   if (game === 'roll') {
-    const roll = Math.floor(Math.random() * 6) + 1;
-    return api.sendMessage(`🎲 You rolled a ${roll}`, event.threadID, event.messageID);
+    const roll = randomInt(1, 6);
+    data.balances[senderID] += roll;
+    saveData();
+    return api.sendMessage(`🎲 You rolled a ${roll} and earned ${roll} coins! 💰\nBalance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
   }
 
   // --- ROCK PAPER SCISSORS ---
   if (game === 'rps') {
-    if (!input) return api.sendMessage('Choose one: rock, paper, scissors, jack, or empoy', event.threadID, event.messageID);
+    if (!input) return api.sendMessage('✂️ Choose one: rock, paper, scissors, jack, or empoy', threadID, event.messageID);
 
-    // Map special terms "jack" = rock, "empoy" = scissors
     const mapping = {
       rock: 'rock',
       paper: 'paper',
@@ -75,14 +130,14 @@ module.exports.run = async function({ api, event, args }) {
 
     const userChoice = mapping[input];
     if (!userChoice) {
-      return api.sendMessage('Invalid choice. Choose rock, paper, scissors, jack, or empoy.', event.threadID, event.messageID);
+      return api.sendMessage('❌ Invalid choice. Choose rock, paper, scissors, jack, or empoy.', threadID, event.messageID);
     }
 
     const options = ['rock', 'paper', 'scissors'];
-    const botChoice = options[Math.floor(Math.random() * options.length)];
+    const botChoice = options[randomInt(0, options.length - 1)];
 
     if (userChoice === botChoice) {
-      return api.sendMessage(`Tie! We both chose ${userChoice}.`, event.threadID, event.messageID);
+      return api.sendMessage(`🤝 Tie! We both chose ${userChoice}. No coins earned.`, threadID, event.messageID);
     }
 
     if (
@@ -90,11 +145,92 @@ module.exports.run = async function({ api, event, args }) {
       (userChoice === 'paper' && botChoice === 'rock') ||
       (userChoice === 'scissors' && botChoice === 'paper')
     ) {
-      return api.sendMessage(`You win! You chose ${userChoice}, I chose ${botChoice}.`, event.threadID, event.messageID);
+      data.balances[senderID] += 10;
+      saveData();
+      return api.sendMessage(`🎉 You win! You chose ${userChoice}, I chose ${botChoice}. You earned 10 coins! 💰\nBalance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
     } else {
-      return api.sendMessage(`You lose! You chose ${userChoice}, I chose ${botChoice}.`, event.threadID, event.messageID);
+      return api.sendMessage(`😞 You lose! You chose ${userChoice}, I chose ${botChoice}. No coins earned.`, threadID, event.messageID);
     }
   }
 
-  return api.sendMessage('Unknown game option. Please use guess, riddle, roll, or rps.', event.threadID, event.messageID);
+  // --- PET BATTLE ---
+  if (game === 'petbattle') {
+    if (!data.petBattleData[senderID]) {
+      data.petBattleData[senderID] = { hp: 100, attack: 15 };
+      saveData();
+      return api.sendMessage('🐾 Your pet is ready for battle! Type "games petbattle attack" to attack or "games petbattle heal" to heal your pet (costs 10 coins).', threadID, event.messageID);
+    }
+
+    const pet = data.petBattleData[senderID];
+    const enemy = { hp: 100, attack: 15 };
+
+    if (input === 'attack') {
+      enemy.hp -= pet.attack;
+      let msg = `🐾 You attacked the enemy pet! Enemy HP: ${enemy.hp <= 0 ? 0 : enemy.hp}\n`;
+
+      if (enemy.hp <= 0) {
+        data.leaderboard[senderID] = (data.leaderboard[senderID] || 0) + 1;
+        data.balances[senderID] += 20;
+        delete data.petBattleData[senderID];
+        saveData();
+        return api.sendMessage(msg + `🎉 You defeated the enemy pet! You gained a win and 20 coins! 💰\nBalance: ${data.balances[senderID]} coins.\nType "games petbattle" to battle again.`, threadID, event.messageID);
+      }
+
+      pet.hp -= enemy.attack;
+      msg += `🐕 Enemy attacked you back! Your pet HP: ${pet.hp <= 0 ? 0 : pet.hp}\n`;
+
+      if (pet.hp <= 0) {
+        delete data.petBattleData[senderID];
+        saveData();
+        return api.sendMessage(msg + '💀 Your pet was defeated! Game over. Type "games petbattle" to start a new battle.', threadID, event.messageID);
+      }
+
+      saveData();
+      return api.sendMessage(msg + 'Type "games petbattle attack" to continue attacking or "games petbattle heal" to heal your pet (costs 10 coins).', threadID, event.messageID);
+    }
+
+    if (input === 'heal') {
+      if (data.balances[senderID] < 10) {
+        return api.sendMessage('❌ Not enough coins to heal! You need 10 coins.', threadID, event.messageID);
+      }
+      data.balances[senderID] -= 10;
+      pet.hp += 20;
+      if (pet.hp > 100) pet.hp = 100;
+      saveData();
+      return api.sendMessage(`💊 You healed your pet for 20 HP at cost of 10 coins. Current HP: ${pet.hp}.\nBalance: ${data.balances[senderID]} coins.\nType "games petbattle attack" to attack again.`, threadID, event.messageID);
+    }
+
+    if (input === 'status') {
+      return api.sendMessage(`🐾 Pet Status: HP = ${pet.hp}, Attack = ${pet.attack}\nYour balance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
+    }
+
+    return api.sendMessage('Unknown petbattle command. Use "attack", "heal", or "status".', threadID, event.messageID);
+  }
+
+  // --- LEADERBOARD ---
+  if (game === 'leaderboard') {
+    const userWins = data.leaderboard[senderID] || 0;
+    return api.sendMessage(`🏆 Your total pet battle wins: ${userWins}`, threadID, event.messageID);
+  }
+
+  // --- TOP LIST ---
+  if (game === 'toplist') {
+    if (Object.keys(data.leaderboard).length === 0) {
+      return api.sendMessage('No pet battle wins recorded yet. 🐾', threadID, event.messageID);
+    }
+    const sorted = Object.entries(data.leaderboard).sort((a,b) => b[1] - a[1]).slice(0, 5);
+
+    let msg = '🥇 Top 5 Pet Battle Winners:\n';
+    sorted.forEach(([user, wins], idx) => {
+      msg += `${idx + 1}. User ${user}: ${wins} wins\n`;
+    });
+    return api.sendMessage(msg, threadID, event.messageID);
+  }
+
+  // --- BALANCE CHECK ---
+  if (game === 'balance') {
+    return api.sendMessage(`💰 Your current balance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
+  }
+
+  return api.sendMessage('❓ Unknown game option. Use guess, riddle, roll, rps, petbattle, leaderboard, toplist, or balance.', threadID, event.messageID);
 };
