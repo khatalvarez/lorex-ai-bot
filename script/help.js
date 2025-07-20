@@ -1,4 +1,3 @@
-const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 
@@ -7,60 +6,127 @@ module.exports.config = {
   version: '1.0.0',
   role: 0,
   hasPrefix: true,
-  aliases: ['tulong'],
-  description: "List of commands with Encantadia-themed image",
-  usage: "help [page or command]",
-  credits: 'ZEROME NAVAL',
+  aliases: ['info'],
+  description: "Beginner's guide",
+  usage: "Help [page] or [command]",
+  credits: 'Developer',
 };
 
-module.exports.run = async function({ api, event, enableCommands, args, prefix }) {
+module.exports.run = async function({
+  api,
+  event,
+  enableCommands,
+  args,
+  Utils,
+  prefix
+}) {
   const input = args.join(' ');
   try {
+    const eventCommands = enableCommands[1].handleEvent;
     const commands = enableCommands[0].commands;
-    const pages = 20;
-    let page = 1;
 
-    if (!input || !isNaN(input)) {
-      page = input && !isNaN(input) ? parseInt(input) : 1;
-      const start = (page - 1) * pages;
-      const end = start + pages;
+    // === DEFAULT HELP PAGE (NO INPUT) ===
+    if (!input) {
+      const page = 1;
+      const perPage = 20;
+      const start = (page - 1) * perPage;
+      const end = start + perPage;
+      let helpMessage = `**COMMAND LIST**\n\n`;
 
-      let helpMessage = `✨ Encantadia Commands List (Page ${page}/${Math.ceil(commands.length / pages)}) ✨\n\n`;
       for (let i = start; i < Math.min(end, commands.length); i++) {
-        helpMessage += `\t${i + 1}. 「 ${prefix}${commands[i]} 」\n`;
+        helpMessage += `${i + 1}. ${prefix}${commands[i]}\n`;
       }
-      helpMessage += `\nTo see next page, type: ${prefix}help ${page + 1}\n\nDeveloper: ZEROME NAVAL`;
 
-      // Image URL ng Encantadia fairy logo (pwedeng palitan mo)
-      const imgUrl = 'https://i.imgur.com/1O4uXWl.png'; 
-      const imgPath = path.join(__dirname, 'cache', 'encantadia_fairy.png');
-
-      const response = await axios.get(imgUrl, { responseType: 'stream' });
-      response.data.pipe(fs.createWriteStream(imgPath)).on('finish', () => {
-        api.sendMessage({
-          body: helpMessage,
-          attachment: fs.createReadStream(imgPath)
-        }, event.threadID, () => {
-          fs.unlinkSync(imgPath);
-        }, event.messageID);
+      helpMessage += `\n**EVENT HANDLERS:**\n`;
+      eventCommands.forEach((eventCommand, index) => {
+        helpMessage += `${index + 1}. ${prefix}${eventCommand}\n`;
       });
 
-    } else {
-      const commandName = input.toLowerCase();
-      const command = commands.find(cmd => cmd.toLowerCase() === commandName);
-      if (command) {
-        const message = `✨ Command Details ✨\n\n` +
-          `Name: ${command}\n` +
-          `Usage: ${prefix}${command}\n` +
-          `Description: (Add description here if you want)\n\nDeveloper: ZEROME NAVAL`;
+      helpMessage += `\nPage ${page}/${Math.ceil(commands.length / perPage)}\n`;
+      helpMessage += `Type '${prefix}help [page]' to navigate or '${prefix}help [command]' for details.`;
 
-        api.sendMessage(message, event.threadID, event.messageID);
+      // Send with logo image
+      const imagePath = path.join(__dirname, 'assets', 'encantadia_logo.jpg');
+      const imageStream = fs.createReadStream(imagePath);
+
+      return api.sendMessage({
+        body: helpMessage,
+        attachment: imageStream
+      }, event.threadID, event.messageID);
+    }
+
+    // === PAGINATED HELP ===
+    else if (!isNaN(input)) {
+      const page = parseInt(input);
+      const perPage = 20;
+      const start = (page - 1) * perPage;
+      const end = start + perPage;
+      let helpMessage = `**COMMAND LIST** (Page ${page})\n\n`;
+
+      for (let i = start; i < Math.min(end, commands.length); i++) {
+        helpMessage += `${i + 1}. ${prefix}${commands[i]}\n`;
+      }
+
+      helpMessage += `\n**EVENT HANDLERS:**\n`;
+      eventCommands.forEach((eventCommand, index) => {
+        helpMessage += `${index + 1}. ${prefix}${eventCommand}\n`;
+      });
+
+      helpMessage += `\nPage ${page} of ${Math.ceil(commands.length / perPage)}\n`;
+      helpMessage += `Use '${prefix}help [page]' to navigate.`;
+      return api.sendMessage(helpMessage, event.threadID, event.messageID);
+    }
+
+    // === SPECIFIC COMMAND HELP ===
+    else {
+      const command = [...Utils.handleEvent, ...Utils.commands].find(([key]) =>
+        key.includes(input.toLowerCase())
+      )?.[1];
+
+      if (command) {
+        const {
+          name,
+          version,
+          role,
+          aliases = [],
+          description,
+          usage,
+          credits,
+          cooldown,
+        } = command;
+
+        const roleMessage = role !== undefined
+          ? (role === 0 ? 'User' : role === 1 ? 'Admin' : role === 2 ? 'Thread Admin' : 'Super Admin')
+          : 'Unknown';
+
+        let infoMessage = `**COMMAND INFO**\n\n`;
+        infoMessage += `• Name: ${name}\n`;
+        infoMessage += `• Version: ${version || '1.0.0'}\n`;
+        infoMessage += `• Permission: ${roleMessage}\n`;
+        if (aliases.length) infoMessage += `• Aliases: ${aliases.join(', ')}\n`;
+        if (description) infoMessage += `• Description: ${description}\n`;
+        if (usage) infoMessage += `• Usage: ${usage}\n`;
+        if (cooldown) infoMessage += `• Cooldown: ${cooldown} second(s)\n`;
+        if (credits) infoMessage += `• Credits: ${credits}\n`;
+
+        return api.sendMessage(infoMessage, event.threadID, event.messageID);
       } else {
-        api.sendMessage('Command not found.', event.threadID, event.messageID);
+        return api.sendMessage('Command not found.', event.threadID, event.messageID);
       }
     }
   } catch (error) {
     console.error(error);
-    api.sendMessage('An error occurred while fetching the help commands.', event.threadID, event.messageID);
+    api.sendMessage('An error occurred while processing your help request.', event.threadID, event.messageID);
+  }
+};
+
+module.exports.handleEvent = async function({ api, event, prefix }) {
+  const { threadID, messageID, body } = event;
+  const message = prefix
+    ? `System prefix: ${prefix}`
+    : `Sorry, I don't have a prefix configured.`;
+
+  if (body?.toLowerCase().startsWith('prefix')) {
+    api.sendMessage(message, threadID, messageID);
   }
 };
