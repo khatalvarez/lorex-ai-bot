@@ -7,19 +7,17 @@ module.exports.config = {
   role: 0,
   hasPrefix: true,
   aliases: ['game'],
-  description: 'Play games: guess number, riddle, roll, rps, petbattle, leaderboard, toplist, balance',
+  description: 'Play games: guess, riddle, roll, rps, petbattle, leaderboard, toplist, balance',
   usage: 'games [guess|riddle|roll|rps|petbattle|leaderboard|toplist|balance] [input]',
   credits: 'OpenAI'
 };
 
-// Default riddles with emojis
 const riddles = [
   { q: "What has keys but can't open locks? 🔑", a: "keyboard" },
   { q: "What has a neck but no head? 🍼", a: "bottle" },
   { q: "What has hands but can't clap? ⏰", a: "clock" }
 ];
 
-// Data store with persistence
 let data = {
   balances: {},
   leaderboard: {},
@@ -197,40 +195,48 @@ module.exports.run = async function({ api, event, args }) {
       pet.hp += 20;
       if (pet.hp > 100) pet.hp = 100;
       saveData();
-      return api.sendMessage(`💊 You healed your pet for 20 HP at cost of 10 coins. Current HP: ${pet.hp}.\nBalance: ${data.balances[senderID]} coins.\nType "games petbattle attack" to attack again.`, threadID, event.messageID);
+      return api.sendMessage(`💖 You healed your pet by 20 HP. Current HP: ${pet.hp}\nBalance: ${data.balances[senderID]} coins.\nType "games petbattle attack" to attack again.`, threadID, event.messageID);
     }
 
     if (input === 'status') {
-      return api.sendMessage(`🐾 Pet Status: HP = ${pet.hp}, Attack = ${pet.attack}\nYour balance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
+      return api.sendMessage(`🐾 Your pet's current HP: ${pet.hp}\nAttack power: ${pet.attack}\nBalance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
     }
 
-    return api.sendMessage('Unknown petbattle command. Use "attack", "heal", or "status".', threadID, event.messageID);
+    return api.sendMessage('❓ Unknown petbattle command. Use attack, heal, or status.', threadID, event.messageID);
   }
 
   // --- LEADERBOARD ---
   if (game === 'leaderboard') {
-    const userWins = data.leaderboard[senderID] || 0;
-    return api.sendMessage(`🏆 Your total pet battle wins: ${userWins}`, threadID, event.messageID);
-  }
+    const leaderboardArray = Object.entries(data.leaderboard);
+    if (leaderboardArray.length === 0) return api.sendMessage('🏆 No pet battle wins recorded yet.', threadID, event.messageID);
 
-  // --- TOP LIST ---
-  if (game === 'toplist') {
-    if (Object.keys(data.leaderboard).length === 0) {
-      return api.sendMessage('No pet battle wins recorded yet. 🐾', threadID, event.messageID);
+    leaderboardArray.sort((a, b) => b[1] - a[1]);
+    let msg = '🏆 Pet Battle Leaderboard:\n';
+    for (let i = 0; i < Math.min(10, leaderboardArray.length); i++) {
+      const [userID, wins] = leaderboardArray[i];
+      msg += `${i + 1}. ${userID} - ${wins} wins\n`; // You can replace userID with names if you want
     }
-    const sorted = Object.entries(data.leaderboard).sort((a,b) => b[1] - a[1]).slice(0, 5);
-
-    let msg = '🥇 Top 5 Pet Battle Winners:\n';
-    sorted.forEach(([user, wins], idx) => {
-      msg += `${idx + 1}. User ${user}: ${wins} wins\n`;
-    });
     return api.sendMessage(msg, threadID, event.messageID);
   }
 
-  // --- BALANCE CHECK ---
+  // --- TOPLIST (top balance) ---
+  if (game === 'toplist') {
+    const balArray = Object.entries(data.balances);
+    if (balArray.length === 0) return api.sendMessage('💰 No balances recorded yet.', threadID, event.messageID);
+
+    balArray.sort((a, b) => b[1] - a[1]);
+    let msg = '💰 Top Balances:\n';
+    for (let i = 0; i < Math.min(10, balArray.length); i++) {
+      const [userID, bal] = balArray[i];
+      msg += `${i + 1}. ${userID} - ${bal} coins\n`; // You can replace userID with names if you want
+    }
+    return api.sendMessage(msg, threadID, event.messageID);
+  }
+
+  // --- BALANCE ---
   if (game === 'balance') {
     return api.sendMessage(`💰 Your current balance: ${data.balances[senderID]} coins.`, threadID, event.messageID);
   }
 
-  return api.sendMessage('❓ Unknown game option. Use guess, riddle, roll, rps, petbattle, leaderboard, toplist, or balance.', threadID, event.messageID);
+  return api.sendMessage('❌ Unknown game option. Please use guess, riddle, roll, rps, petbattle, leaderboard, toplist, or balance.', threadID, event.messageID);
 };
