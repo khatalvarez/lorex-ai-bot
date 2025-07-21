@@ -5,7 +5,7 @@ const maintenancePath = path.join(__dirname, '../maintenance.json');
 module.exports.config = {
   name: 'maintenance',
   version: '1.0.0',
-  hasPermission: 0, // admin only
+  hasPermission: 1, // admin only
   usePrefix: true,
   aliases: ['maint'],
   description: "Enable or disable bot maintenance mode",
