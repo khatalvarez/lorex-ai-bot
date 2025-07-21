@@ -15,7 +15,7 @@ function saveAdminData() {
 module.exports.config = {
   name: 'admin',
   version: '1.0.0',
-  role: 2,
+  role: 1,
   hasPrefix: true,
   description: 'Admin tools and password lock system',
   usage: 'admin password [add/remove]',
