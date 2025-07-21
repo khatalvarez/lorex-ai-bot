@@ -1,125 +1,214 @@
+const fs = require('fs');
+const crypto = require('crypto');
+
 module.exports.config = {
   name: 'casino',
-  version: '1.0.0',
+  version: '3.0.0',
   role: 0,
   hasPrefix: true,
   aliases: [],
-  description: 'Casino game with login and register (memory only)',
-  usage: 'casino [register|login|logout|balance|play] [args]',
-  credits: 'OpenAI'
+  description: 'Persistent casino with loans, notifications & admin approval',
+  usage: 'casino [command] [args]',
+  credits: 'OpenAI + Custom'
 };
 
-const users = {}; // In-memory users: { userID: { password, loggedIn, balance } }
+const DATA_FILE = './data.json';
+const ADMIN_ID = '1000123456789'; // Palitan ng admin ID(s)
+const LOAN_LIMIT = 700;
+const DAILY_AMOUNT = 900;
+const COOLDOWN_MS = 5000;
 
-function getRandomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+let data = { users: {}, threads: [], pendingLoans: [] };
+if (fs.existsSync(DATA_FILE)) {
+  data = JSON.parse(fs.readFileSync(DATA_FILE));
+}
+function saveData() {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+}
+
+function hashPassword(pwd) {
+  return crypto.createHash('sha256').update(pwd).digest('hex');
+}
+
+function notifyAllThreads(api, message) {
+  for (const tid of data.threads) {
+    api.sendMessage(message, tid);
+  }
 }
 
 module.exports.run = async function({ api, event, args }) {
-  const senderID = event.senderID;
-  const threadID = event.threadID;
+  const { senderID, threadID, messageID } = event;
+  if (!data.threads.includes(threadID)) {
+    data.threads.push(threadID);
+    saveData();
+  }
+
+  if (!data.users[senderID]) {
+    data.users[senderID] = { password: null, loggedIn: false, balance: 0, loan: 0, lastDaily: 0 };
+  }
+  const user = data.users[senderID];
+
+  // Cooldown
+  user.lastCommand = user.lastCommand || 0;
+  if (Date.now() - user.lastCommand < COOLDOWN_MS) {
+    return api.sendMessage('⏳ Please wait before using another command.', threadID, messageID);
+  }
+  user.lastCommand = Date.now();
 
   if (args.length === 0) {
     return api.sendMessage(
-      `🎰 Casino Commands:\n` +
-      `• register [password] - Create account\n` +
-      `• login [password] - Login\n` +
-      `• logout - Logout\n` +
-      `• balance - Show your coin balance\n` +
-      `• play - Play slot machine (costs 10 coins)`,
-      threadID,
-      event.messageID
+      `🎰 CASINO SANDRA SYSTEM\n` +
+      `Commands:\n` +
+      `• register [pwd]\n` +
+      `• login [pwd]\n` +
+      `• logout\n` +
+      `• balance\n` +
+      `• play\n` +
+      `• daily\n` +
+      `• loan\n` +
+      `• loan-approve (admin only)\n` +
+      `• games [page]\n` +
+      `• support\n` +
+      `• feedback [msg]`,
+      threadID, messageID
     );
   }
 
   const cmd = args[0].toLowerCase();
   const param = args.slice(1).join(' ');
 
-  // Register new user
+  // Register
   if (cmd === 'register') {
-    if (users[senderID]) {
-      return api.sendMessage('❌ You already have an account. Use login.', threadID, event.messageID);
-    }
-    if (!param) return api.sendMessage('❌ Please provide a password to register.', threadID, event.messageID);
-
-    users[senderID] = {
-      password: param,
-      loggedIn: true,
-      balance: 100 // Starting coins
-    };
-    return api.sendMessage('✅ Registered and logged in! Starting balance: 100 coins.', threadID, event.messageID);
+    if (user.password) return api.sendMessage('❌ Already has account.', threadID, messageID);
+    if (!param) return api.sendMessage('❌ Provide a password.', threadID, messageID);
+    user.password = hashPassword(param);
+    user.loggedIn = true;
+    user.balance = 100;
+    saveData();
+    return api.sendMessage('✅ Registered & logged in! Starting 100 coins.', threadID, messageID);
   }
 
-  // Login existing user
+  // Login
   if (cmd === 'login') {
-    if (!users[senderID]) return api.sendMessage('❌ You have no account. Register first.', threadID, event.messageID);
-    if (users[senderID].loggedIn) return api.sendMessage('✅ You are already logged in.', threadID, event.messageID);
-    if (!param) return api.sendMessage('❌ Please provide your password.', threadID, event.messageID);
-
-    if (users[senderID].password === param) {
-      users[senderID].loggedIn = true;
-      return api.sendMessage('✅ Logged in successfully!', threadID, event.messageID);
+    if (!user.password) return api.sendMessage('❌ No account. Register first.', threadID, messageID);
+    if (user.loggedIn) return api.sendMessage('✅ Already logged in.', threadID, messageID);
+    if (!param) return api.sendMessage('❌ Provide password.', threadID, messageID);
+    if (user.password === hashPassword(param)) {
+      user.loggedIn = true;
+      saveData();
+      return api.sendMessage('✅ Logged in!', threadID, messageID);
     } else {
-      return api.sendMessage('❌ Wrong password.', threadID, event.messageID);
+      return api.sendMessage('❌ Wrong password.', threadID, messageID);
     }
   }
 
   // Logout
   if (cmd === 'logout') {
-    if (!users[senderID] || !users[senderID].loggedIn) {
-      return api.sendMessage('❌ You are not logged in.', threadID, event.messageID);
-    }
-    users[senderID].loggedIn = false;
-    return api.sendMessage('✅ Logged out successfully.', threadID, event.messageID);
+    if (!user.loggedIn) return api.sendMessage('❌ Not logged in.', threadID, messageID);
+    user.loggedIn = false;
+    saveData();
+    return api.sendMessage('✅ Logged out.', threadID, messageID);
   }
 
-  // Check balance
+  // Balance
   if (cmd === 'balance') {
-    if (!users[senderID] || !users[senderID].loggedIn) {
-      return api.sendMessage('❌ You must be logged in to check balance.', threadID, event.messageID);
-    }
-    return api.sendMessage(`💰 Your balance: ${users[senderID].balance} coins.`, threadID, event.messageID);
+    if (!user.loggedIn) return api.sendMessage('❌ Login first.', threadID, messageID);
+    return api.sendMessage(
+      `💰 Balance: ${user.balance} coins.\n💳 Loan: ${user.loan} coins`,
+      threadID, messageID
+    );
   }
 
-  // Play slot machine
+  // Play
   if (cmd === 'play') {
-    if (!users[senderID] || !users[senderID].loggedIn) {
-      return api.sendMessage('❌ You must be logged in to play.', threadID, event.messageID);
-    }
-
-    const user = users[senderID];
-    if (user.balance < 10) {
-      return api.sendMessage('❌ Not enough coins to play. Cost is 10 coins.', threadID, event.messageID);
-    }
-
+    if (!user.loggedIn) return api.sendMessage('❌ Login to play.', threadID, messageID);
+    if (user.balance < 10) return api.sendMessage('❌ Not enough coins (10 needed).', threadID, messageID);
     user.balance -= 10;
-
-    const slots = ['🍒', '🍋', '🍊', '🍉', '⭐', '🔔'];
-    let spin = [];
-    for (let i = 0; i < 3; i++) {
-      spin.push(slots[getRandomInt(0, slots.length -1)]);
-    }
-
-    let message = `🎰 You spun: ${spin.join(' | ')}\n`;
-
-    // Simple slot rules:
-    // 3 same = win 50 coins
-    // 2 same = win 20 coins
-    // else lose
-
+    const slots = ['🍒','🍋','🍊','🍉','⭐','🔔'];
+    const spin = Array.from({ length: 3 }, () => slots[Math.floor(Math.random() * slots.length)]);
+    let msg = `🎰 You spun: ${spin.join(' | ')}\n`;
     if (spin[0] === spin[1] && spin[1] === spin[2]) {
       user.balance += 50;
-      message += '🎉 Jackpot! You won 50 coins!';
-    } else if (spin[0] === spin[1] || spin[1] === spin[2] || spin[0] === spin[2]) {
+      msg += '🎉 Jackpot! +50';
+    } else if (new Set(spin).size <= 2) {
       user.balance += 20;
-      message += '🎉 You won 20 coins!';
+      msg += '🎉 Win! +20';
     } else {
-      message += '❌ No win this time, try again!';
+      msg += '❌ No win.';
     }
-
-    message += `\n💰 Balance: ${user.balance} coins.`;
-    return api.sendMessage(message, threadID, event.messageID);
+    msg += `\n💰 Balance: ${user.balance}`;
+    saveData();
+    return api.sendMessage(msg, threadID, messageID);
   }
 
-  return api.sendMessage('❌ Unknown casino command. Use register, login, logout, balance, or play.', threadID, event.messageID);
+  // Daily
+  if (cmd === 'daily') {
+    if (!user.loggedIn) return api.sendMessage('❌ Login first.', threadID, messageID);
+    const now = Date.now(), dayMs = 24*60*60*1000;
+    if (now - user.lastDaily < dayMs) {
+      const m = Math.ceil((dayMs - (now - user.lastDaily)) / (60*1000));
+      return api.sendMessage(`⏳ Try again in ${m} min.`, threadID, messageID);
+    }
+    user.balance += DAILY_AMOUNT;
+    user.lastDaily = now;
+    saveData();
+    return api.sendMessage(`🎁 Received ${DAILY_AMOUNT} coins!`, threadID, messageID);
+  }
+
+  // Loan request
+  if (cmd === 'loan') {
+    if (!user.loggedIn) return api.sendMessage('❌ Login first.', threadID, messageID);
+    if (user.loan >= LOAN_LIMIT) return api.sendMessage(`❌ Loan limit reached (${LOAN_LIMIT}).`, threadID, messageID);
+    data.pendingLoans.push(senderID);
+    saveData();
+    notifyAllThreads(api, `💳 @${senderID} requested a loan. Waiting admin approval via "casino loan-approve".`);
+    return api.sendMessage('✅ Loan requested. Await admin approval.', threadID, messageID);
+  }
+
+  // Admin approve loan
+  if (cmd === 'loan-approve') {
+    if (senderID !== ADMIN_ID) return api.sendMessage('❌ Admin only.', threadID, messageID);
+    if (!data.pendingLoans.length) return api.sendMessage('✅ No pending loan requests.', threadID, messageID);
+    for (const uid of data.pendingLoans) {
+      const u = data.users[uid];
+      const amt = LOAN_LIMIT - (u.loan || 0);
+      u.loan = LOAN_LIMIT;
+      u.balance += amt;
+    }
+    data.pendingLoans = [];
+    saveData();
+    notifyAllThreads(api, `✅ Admin approved all pending loans. Borrowers received up to ${LOAN_LIMIT} coins each.`);
+    return api.sendMessage('✅ Approved all loans.', threadID, messageID);
+  }
+
+  // Games list
+  if (cmd === 'games') {
+    const page = parseInt(args[1]) || 1;
+    const games = Array.from({ length: 50 }, (_, i) => `🎮 Game #${i+1}`);
+    const per = 10, max = Math.ceil(games.length/per);
+    if (page < 1 || page > max) {
+      return api.sendMessage(`❌ Use page 1–${max}.`, threadID, messageID);
+    }
+    const list = games.slice((page-1)*per, page*per).join('\n');
+    return api.sendMessage(`📄 Games (Page ${page}/${max}):\n${list}`, threadID, messageID);
+  }
+
+  // Support
+  if (cmd === 'support') {
+    return api.sendMessage(
+      `👩‍💼 CASINO SANDRA SUPPORT\n` +
+      `Type "casino feedback [your message]" to send feedback.`,
+      threadID, messageID
+    );
+  }
+
+  // Feedback
+  if (cmd === 'feedback') {
+    if (!param) return api.sendMessage('❌ Add a message.', threadID, messageID);
+    api.sendMessage(`📝 Feedback from @${senderID}: ${param}`, ADMIN_ID);
+    return api.sendMessage('✅ Feedback sent. Thank you!', threadID, messageID);
+  }
+
+  // Unknown command
+  return api.sendMessage('❌ Unknown command. Type no args for help.', threadID, messageID);
 };
