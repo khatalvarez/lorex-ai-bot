@@ -1,0 +1,19 @@
+{
+  "users": {
+    "1000123456789": {
+      "password": "5e884898da28047151d0e56f8dc629...",  // hashed password
+      "loggedIn": false,
+      "balance": 200,
+      "loan": 700,
+      "lastDaily": 1721544820000,
+      "lastCommand": 1721544910000
+    }
+  },
+  "threads": [
+    "65656565656565",   // group chat thread IDs
+    "12345678901234"
+  ],
+  "pendingLoans": [
+    "1000123456789"     // senderID requesting loan
+  ]
+}
