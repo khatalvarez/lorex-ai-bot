@@ -62,7 +62,7 @@ module.exports.run = async function({ api, event, args }) {
       `• register [pwd]\n` +
       `• login [pwd]\n` +
       `• logout\n` +
-      `• balance\n` +
+      `• bank\n` +
       `• play\n` +
       `• daily\n` +
       `• loan\n` +
@@ -110,13 +110,32 @@ module.exports.run = async function({ api, event, args }) {
     return api.sendMessage('✅ Logged out.', threadID, messageID);
   }
 
-  // Balance
-  if (cmd === 'balance') {
+  // Bank command (replaces balance)
+  if (cmd === 'bank') {
     if (!user.loggedIn) return api.sendMessage('❌ Login first.', threadID, messageID);
-    return api.sendMessage(
-      `💰 Balance: ${user.balance} coins.\n💳 Loan: ${user.loan} coins`,
-      threadID, messageID
-    );
+
+    user.lastBank = user.lastBank || 0;
+    const now = Date.now();
+    const bankCooldown = 60 * 1000; // 1 minute
+
+    let bonus = 0;
+    if (now - user.lastBank >= bankCooldown) {
+      bonus = 5;
+      user.balance += bonus;
+      user.lastBank = now;
+    }
+
+    saveData();
+
+    const bankMsg =
+      `🏦 **BANK STATUS**\n\n` +
+      `💰 **Balance:** ${user.balance} coins\n` +
+      `💳 **Loan:** ${user.loan} coins\n` +
+      (bonus > 0
+        ? `🎉 You earned **+${bonus} coins** for checking your bank!\n`
+        : `⏳ No bonus yet. Try again later.`);
+
+    return api.sendMessage(bankMsg, threadID, messageID);
   }
 
   // Play
@@ -155,7 +174,7 @@ module.exports.run = async function({ api, event, args }) {
     return api.sendMessage(`🎁 Received ${DAILY_AMOUNT} coins!`, threadID, messageID);
   }
 
-  // Loan request
+  // Loan
   if (cmd === 'loan') {
     if (!user.loggedIn) return api.sendMessage('❌ Login first.', threadID, messageID);
     if (user.loan >= LOAN_LIMIT) return api.sendMessage(`❌ Loan limit reached (${LOAN_LIMIT}).`, threadID, messageID);
@@ -165,9 +184,9 @@ module.exports.run = async function({ api, event, args }) {
     return api.sendMessage('✅ Loan requested. Await admin approval.', threadID, messageID);
   }
 
-  // Admin approve loan
+  // Loan approval (admin)
   if (cmd === 'loan-approve') {
-    if (senderID !== ADMIN_ID) return api.sendMessage('❌ Admin only.', threadID, messageID);
+    if (senderID !== 61577040643519) return api.sendMessage('❌ Admin only.', threadID, messageID);
     if (!data.pendingLoans.length) return api.sendMessage('✅ No pending loan requests.', threadID, messageID);
     for (const uid of data.pendingLoans) {
       const u = data.users[uid];
@@ -181,34 +200,9 @@ module.exports.run = async function({ api, event, args }) {
     return api.sendMessage('✅ Approved all loans.', threadID, messageID);
   }
 
-  // Games list
+  // Games command
   if (cmd === 'games') {
     const page = parseInt(args[1]) || 1;
-    const games = Array.from({ length: 50 }, (_, i) => `🎮 Game #${i+1}`);
-    const per = 10, max = Math.ceil(games.length/per);
-    if (page < 1 || page > max) {
-      return api.sendMessage(`❌ Use page 1–${max}.`, threadID, messageID);
-    }
-    const list = games.slice((page-1)*per, page*per).join('\n');
-    return api.sendMessage(`📄 Games (Page ${page}/${max}):\n${list}`, threadID, messageID);
-  }
-
-  // Support
-  if (cmd === 'support') {
-    return api.sendMessage(
-      `👩‍💼 CASINO SANDRA SUPPORT\n` +
-      `Type "casino feedback [your message]" to send feedback.`,
-      threadID, messageID
-    );
-  }
-
-  // Feedback
-  if (cmd === 'feedback') {
-    if (!param) return api.sendMessage('❌ Add a message.', threadID, messageID);
-    api.sendMessage(`📝 Feedback from @${senderID}: ${param}`, ADMIN_ID);
-    return api.sendMessage('✅ Feedback sent. Thank you!', threadID, messageID);
-  }
-
-  // Unknown command
-  return api.sendMessage('❌ Unknown command. Type no args for help.', threadID, messageID);
-};
+    const games = [
+      "The Legend of Zelda: Breath of the Wild", "Elden Ring", "Red Dead Redemption 2",
+      "The Witcher 3: Wild Hunt", "God of War:
