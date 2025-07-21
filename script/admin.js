@@ -6,7 +6,7 @@ if (!fs.existsSync(adminPath)) {
 }
 
 let data = JSON.parse(fs.readFileSync(adminPath));
-const adminUIDs = ['61577040643519']; // 👈 Replace with your actual admin UID(s)
+const adminUIDs = ['61575137262643']; // 👈 Replace with your actual admin UID(s)
 
 function saveAdminData() {
   fs.writeFileSync(adminPath, JSON.stringify(data, null, 2));
