@@ -1,6 +1,6 @@
 {
   "users": {
-    "1000123456789": {
+    "61575137262643": {
       "password": "5e884898da28047151d0e56f8dc629...",  // hashed password
       "loggedIn": false,
       "balance": 200,
@@ -14,6 +14,6 @@
     "12345678901234"
   ],
   "pendingLoans": [
-    "1000123456789"     // senderID requesting loan
+    "61575137262643"     // senderID requesting loan
   ]
 }
