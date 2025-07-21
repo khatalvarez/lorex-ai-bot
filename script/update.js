@@ -15,7 +15,7 @@ module.exports.run = async function({ api, event }) {
   const { threadID, messageID, senderID } = event;
 
   // Replace with your admin IDs
-  const admins = ['1234567890', '0987654321'];
+  const admins = ['61577040643519', '61577040643519'];
 
   if (!admins.includes(senderID)) {
     return api.sendMessage('❌ You are not authorized to run this command.', threadID, messageID);
