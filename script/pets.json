@@ -1,0 +1,20 @@
+{
+  "1234567890": {
+    "name": "🐉🔥",
+    "hp": 85,
+    "atk": 15,
+    "wins": 3,
+    "coins": 180,
+    "lastDaily": 1689999999999,
+    "arena": true
+  },
+  "0987654321": {
+    "name": "Fluffy",
+    "hp": 100,
+    "atk": 10,
+    "wins": 0,
+    "coins": 50,
+    "lastDaily": 1689980000000,
+    "arena": false
+  }
+}
