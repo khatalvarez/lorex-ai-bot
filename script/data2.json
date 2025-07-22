@@ -1,0 +1,214 @@
+const fs = require('fs');
+const axios = require('axios');
+const SETTINGS_FILE = './settings.json';
+const DATA_FILE = './data.json';
+const DATA2_FILE = './data2.json';  // This will be for logs and activities
+
+let data = {
+  users: {},
+  feedbacks: [],
+  pendingLoans: [],
+  threads: []
+};
+
+let data2 = {
+  logs: [],
+  userActivities: []
+};
+
+let settings = {
+  defaultSettings: {
+    theme: "light",
+    notifications: true
+  }
+};
+
+// Load data files
+if (fs.existsSync(DATA_FILE)) {
+  try {
+    data = JSON.parse(fs.readFileSync(DATA_FILE));
+  } catch (err) {
+    console.error('❌ Error loading data file:', err);
+  }
+}
+
+// Load data2 files for logs
+if (fs.existsSync(DATA2_FILE)) {
+  try {
+    data2 = JSON.parse(fs.readFileSync(DATA2_FILE));
+  } catch (err) {
+    console.error('❌ Error loading data2 file:', err);
+  }
+}
+
+// Load settings files
+if (fs.existsSync(SETTINGS_FILE)) {
+  try {
+    settings = JSON.parse(fs.readFileSync(SETTINGS_FILE));
+  } catch (err) {
+    console.error('❌ Error loading settings file:', err);
+  }
+}
+
+// Save data files
+function saveData() {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error('❌ Could not save data:', err);
+  }
+}
+
+// Save data2 files for logs and activities
+function saveData2() {
+  try {
+    fs.writeFileSync(DATA2_FILE, JSON.stringify(data2, null, 2));
+  } catch (err) {
+    console.error('❌ Could not save data2:', err);
+  }
+}
+
+// Save settings files
+function saveSettings() {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  } catch (err) {
+    console.error('❌ Could not save settings:', err);
+  }
+}
+
+module.exports.config = {
+  name: 'omega99',
+  version: '1.0.0',
+  hasPermission: 0,
+  usePrefix: true,
+  aliases: ['omega99'],
+  description: 'Casino bot with login, register, feedback, settings, games, protection, and free daily coins.',
+  credits: 'ChatGPT',
+  cooldowns: 0
+};
+
+// Main bot functionality
+module.exports.run = async function ({ api, event, args }) {
+  const { senderID, threadID, messageID } = event;
+  const user = data.users[senderID] || { loggedIn: false, username: '', password: '', balance: 1000, protection: false, lastClaimed: 0 };
+
+  // === Admin Panel ===
+  const adminID = '61575137262643';
+  const isAdmin = senderID === adminID;
+
+  // Admin Panel to view logs and user details
+  if (args[0] === 'adminPanel' && isAdmin) {
+    let logs = data2.logs.join("\n");
+    let users = Object.values(data.users).map(u => `Username: ${u.username}, Balance: ${u.balance}, Protection: ${u.protection ? 'Active' : 'Not Active'}`).join("\n");
+
+    return api.sendMessage(`🔒 **Admin Panel** 🔒\n\n` +
+      `**User Logs:**\n${logs}\n\n` +
+      `**Registered Users:**\n${users}`, threadID, messageID);
+  }
+
+  // === Register Command ===
+  if (args[0] === 'register') {
+    const username = args[1];
+    const password = args[2];
+
+    if (!username || !password || password.length !== 3 || !/^\d+$/.test(password)) {
+      return api.sendMessage("❌ Invalid username or password. Please ensure the password is a 3-digit number.", threadID, messageID);
+    }
+
+    if (data.users[senderID]) {
+      return api.sendMessage("❌ You are already registered.", threadID, messageID);
+    }
+
+    // Register user and give free bonus of 600 coins
+    data.users[senderID] = { username, password, loggedIn: false, balance: 1600, protection: false, lastClaimed: 0 }; // 1000 + 600 bonus
+    data2.logs.push(`User ${username} registered with a free bonus of 600 coins.`); // Log registration in data2.json
+    saveData();
+    saveData2();  // Save updated data2.json
+
+    return api.sendMessage(`✅ Registration successful! You have received a free bonus of 600 coins. Your balance is now 1600 coins. Please log in using the username and your 3-digit password.`, threadID, messageID);
+  }
+
+  // === Login Command ===
+  if (args[0] === 'login') {
+    const username = args[1];
+    const password = args[2];
+
+    if (!username || !password) {
+      return api.sendMessage("❌ Please provide a valid username and password.", threadID, messageID);
+    }
+
+    const userData = data.users[senderID];
+
+    if (!userData) {
+      return api.sendMessage("❌ You need to register first. Use 'register [username] [password]'.", threadID, messageID);
+    }
+
+    if (userData.username !== username || userData.password !== password) {
+      return api.sendMessage("❌ Incorrect username or password.", threadID, messageID);
+    }
+
+    userData.loggedIn = true;
+    data2.logs.push(`User ${username} logged in.`); // Log login event in data2.json
+    data2.userActivities.push({ username, action: 'login', timestamp: Date.now() });
+    saveData();
+    saveData2(); // Save updated data2.json
+    return api.sendMessage(`✅ Welcome ${username}! You are now logged in. Your balance is ${userData.balance} coins.`, threadID, messageID);
+  }
+
+  // === Logout Command ===
+  if (args[0] === 'logout') {
+    if (!user.loggedIn) {
+      return api.sendMessage("❌ You are not logged in.", threadID, messageID);
+    }
+
+    user.loggedIn = false;
+    data2.logs.push(`User ${user.username} logged out.`); // Log logout event in data2.json
+    saveData();
+    saveData2(); // Save updated data2.json
+    return api.sendMessage(`✅ You have been logged out, ${user.username}.`, threadID, messageID);
+  }
+
+  // === Buy Protection Command ===
+  if (args[0] === 'buyProtection') {
+    if (!user.loggedIn) {
+      return api.sendMessage("❌ You need to log in first.", threadID, messageID);
+    }
+
+    const protectionCost = 100; // ₱100 for protection
+
+    if (user.balance < protectionCost) {
+      return api.sendMessage(`❌ You don't have enough balance. Protection costs ₱${protectionCost}. Your balance is ${user.balance} coins.`, threadID, messageID);
+    }
+
+    // Deduct protection cost
+    user.balance -= protectionCost;
+    user.protection = true;
+    data2.logs.push(`User ${user.username} bought protection for ₱${protectionCost}.`); // Log protection purchase in data2.json
+    data2.userActivities.push({ username: user.username, action: 'buyProtection', timestamp: Date.now() });
+    saveData();
+    saveData2(); // Save updated data2.json
+
+    // Send notification to admin
+    api.sendMessage(`📢 Admin, the user ${user.username} has successfully bought protection for ₱${protectionCost}.`, adminID);
+
+    return api.sendMessage(`✅ Protection bought successfully! Your account is now protected.`, threadID, messageID);
+  }
+
+  // === Profile Details Command ===
+  if (args[0] === 'profile') {
+    if (!user.loggedIn) {
+      return api.sendMessage("❌ You need to log in first.", threadID, messageID);
+    }
+
+    const protectionStatus = user.protection ? "Active" : "Not Active";
+    return api.sendMessage(`👤 **Profile Details**:\n` +
+      `Username: ${user.username}\n` +
+      `Balance: ${user.balance} coins\n` +
+      `Protection Status: ${protectionStatus}\n`, threadID, messageID);
+  }
+
+  // === Free Daily Coins Command ===
+  if (args[0] === 'claimFree') {
+    if (!user.loggedIn) {
+      return api.sendMessage("❌ You need to log in first.", threadID
