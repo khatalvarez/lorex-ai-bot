@@ -1,22 +1,19 @@
 const axios = require('axios');
 
 module.exports.config = {
-  name: 'forcast',
+  name: 'forecast',
   version: '1.0.0',
   hasPermission: 0,
   usePrefix: false,
   aliases: ['wthr', 'forecast'],
-  description: "Shows current weather and forecast",
-  usages: "cassweather [location]",
+  description: "Shows current weather and forecast with images",
+  usages: "weather [location]",
   credits: 'CHATGPT',
   cooldowns: 0,
   dependencies: {
     "axios": ""
   }
 };
-
-// Image link mula sa iyong binigay na screenshot
-const WEATHER_IMAGE_URL = 'https://i.ibb.co/XrWZqvB2/weather-image.png';
 
 module.exports.run = async function({ api, event, args }) {
   const location = args.join(' ');
@@ -31,6 +28,10 @@ module.exports.run = async function({ api, event, args }) {
     }
 
     const { current, forecast, location: loc } = weatherData;
+
+    // Determine the weather icon based on conditions
+    const weatherIcon = `https://www.weatherbit.io/static/img/icons/${current.weather.icon}.png`;
+
     const message =
       `🌦️ Weather for ${loc.name}\n\n` +
       `🌡️ Temperature: ${current.temperature}°${loc.degreetype}\n` +
@@ -46,16 +47,11 @@ module.exports.run = async function({ api, event, args }) {
         ` - ☔ Chance: ${day.precip}%\n`
       ).join('\n');
 
-    // Send message with image attachment
-    return api.sendMessage(
-      {
-        body: message,
-        attachment: await global.utils.getStreamFromURL(WEATHER_IMAGE_URL)
-      },
-      event.threadID,
-      event.messageID
-    );
-
+    // Send message with weather icon image
+    api.sendMessage({
+      body: message,
+      attachment: axios.get(weatherIcon, { responseType: 'arraybuffer' })
+    }, event.threadID, event.messageID);
   } catch (error) {
     console.error(error);
     return api.sendMessage('❌ Failed to fetch weather data.', event.threadID, event.messageID);
