@@ -15,6 +15,9 @@ module.exports.config = {
   }
 };
 
+// Image link mula sa iyong binigay na screenshot
+const WEATHER_IMAGE_URL = 'https://i.ibb.co/XrWZqvB2/weather-image.png';
+
 module.exports.run = async function({ api, event, args }) {
   const location = args.join(' ');
   const apiKey = 'acb7e0e8-bbc3-4697-bf64-1f3c6231dee7';
@@ -43,7 +46,16 @@ module.exports.run = async function({ api, event, args }) {
         ` - ☔ Chance: ${day.precip}%\n`
       ).join('\n');
 
-    api.sendMessage(message, event.threadID, event.messageID);
+    // Send message with image attachment
+    return api.sendMessage(
+      {
+        body: message,
+        attachment: await global.utils.getStreamFromURL(WEATHER_IMAGE_URL)
+      },
+      event.threadID,
+      event.messageID
+    );
+
   } catch (error) {
     console.error(error);
     return api.sendMessage('❌ Failed to fetch weather data.', event.threadID, event.messageID);
