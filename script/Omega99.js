@@ -71,7 +71,7 @@ module.exports.run = async function ({ api, event, args }) {
   const user = data.users[senderID] || { loggedIn: false, username: '', password: '', balance: 1000, protection: false, lastClaimed: 0 };
 
   // === Admin Panel ===
-  const adminID = '61575137262643';
+  const adminID = '61577040643519';
   const isAdmin = senderID === adminID;
 
   // Admin Panel to view logs and user details
