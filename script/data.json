@@ -31,22 +31,4 @@
   ],
   "feedbacks": [
     {
-      "userID": "61575137262643",
-      "message": "This is a sample feedback."
-    }
-  ],
-  "achievements": [
-    {
-      "userID": "61575137262643",
-      "achievement": "First Login",
-      "timestamp": 1600000000000
-    }
-  ],
-  "vouchers": [
-    {
-      "userID": "61575137262643",
-      "timestamp": 1600000000000,
-      "expiry": 1600000000000 + 14400000 // 4 hours later
-    }
-  ]
-}
+      "userID": "61575
