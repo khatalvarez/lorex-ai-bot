@@ -1,19 +1,52 @@
 {
   "users": {
     "61575137262643": {
-      "password": "5e884898da28047151d0e56f8dc629...",  // hashed password
+      "password": "hashed_password_here",
+      "loggedIn": true,
+      "balance": 1100,
+      "loan": 0,
+      "protection": false,
+      "settings": {},
+      "lastDaily": 1600000000000,
+      "lastCommand": 1600000000000
+    },
+    "12345678901234": {
+      "password": "hashed_password_here",
       "loggedIn": false,
-      "balance": 200,
-      "loan": 700,
-      "lastDaily": 1721544820000,
-      "lastCommand": 1721544910000
+      "balance": 100,
+      "loan": 0,
+      "protection": false,
+      "settings": {},
+      "lastDaily": 0,
+      "lastCommand": 0
     }
   },
   "threads": [
-    "65656565656565",   // group chat thread IDs
-    "12345678901234"
+    "1234567890",
+    "9876543210"
   ],
   "pendingLoans": [
-    "61575137262643"     // senderID requesting loan
+    "61575137262643",
+    "12345678901234"
+  ],
+  "feedbacks": [
+    {
+      "userID": "61575137262643",
+      "message": "This is a sample feedback."
+    }
+  ],
+  "achievements": [
+    {
+      "userID": "61575137262643",
+      "achievement": "First Login",
+      "timestamp": 1600000000000
+    }
+  ],
+  "vouchers": [
+    {
+      "userID": "61575137262643",
+      "timestamp": 1600000000000,
+      "expiry": 1600000000000 + 14400000 // 4 hours later
+    }
   ]
 }
