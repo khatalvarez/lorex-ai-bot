@@ -122,7 +122,7 @@ module.exports.run = async function ({ api, event, args }) {
   const cmd = args[0]?.toLowerCase() || '';
   const param = args.slice(1).join(' ');
 
-  // === Main Menu with Box
+  // === Main Menu with Box ===
   if (!cmd) {
     return api.sendMessage(
       `🎰 **Welcome to Casino 3.1.7**\n` +
@@ -192,4 +192,12 @@ module.exports.run = async function ({ api, event, args }) {
     saveData();
 
     // Send notification to all threads
-    const notificationMsg = `💎 **${senderID} has purchased protection for $${PROTECTION_COST}!** Please wait for admin approval
+    const notificationMsg = `💎 **${senderID} has purchased protection for $${PROTECTION_COST}!** Please wait for admin approval.`;
+    notifyAllThreads(api, notificationMsg);
+
+    return api.sendMessage(`✅ Protection purchased! Your balance is now ${user.balance} coins. Please wait for admin approval.`, threadID, messageID);
+  }
+
+  // === Loan Request ===
+  if (cmd === 'loan') {
+    if (!user.loggedIn) return api.sendMessage('❌ Login required.', threadID, message
