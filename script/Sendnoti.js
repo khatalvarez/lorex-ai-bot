@@ -3,7 +3,7 @@ const fs = require('fs');
 module.exports.config = {
   name: 'sendnoti',
   version: '1.0.0',
-  hasPermission: 2,  // Admin access required
+  hasPermission: 1,  // Admin access required
   description: 'Send notifications to other groups. Admin only.',
   usages: 'sendnoti [message]',
   credits: 'Omega Team',
