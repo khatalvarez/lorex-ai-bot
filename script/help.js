@@ -1,111 +1,64 @@
-const axios = require('axios');
-
 module.exports.config = {
   name: 'help',
-  version: '1.0.0',
+  version: '2.9.5',
   role: 0,
-  hasPrefix: false,
-  aliases: ['commands', 'info'],
-  description: '📘 Display command list or command info',
-  usage: 'help [page number | command name]',
-  credits: 'ChatGPT'
+  hasPrefix: true,
+  aliases: ['commands', 'h'],
+  description: 'Show help info for all commands or a specific command with an image.',
+  usage: 'help [command]',
+  credits: 'OpenAI'
 };
 
-const narutoImage = 'https://i.ibb.co/wWS3Jyp/naruto-help.jpg'; // direct Naruto image link
+const HELP_IMAGE_URL = 'https://i.ibb.co/4ZYPNW5P/moto-code.png'; // Gamitin itong link sa ibinigay mo
 
-module.exports.run = async function({ api, event, args, enableCommands, Utils }) {
-  const { threadID, messageID } = event;
-  const input = args.join(' ').toLowerCase();
-  const commands = enableCommands[0].commands;
-  const eventCommands = enableCommands[1].handleEvent;
-  const perPage = 20;
+// Simple command list for example
+const commandsList = {
+  help: {
+    description: 'Show help info for all commands or a specific command.',
+    usage: 'help [command]'
+  }
+};
 
-  // Helper: Get image buffer
-  async function getImageBuffer(url) {
-    try {
-      const res = await axios.get(url, { responseType: 'arraybuffer' });
-      return Buffer.from(res.data, 'utf-8');
-    } catch {
-      return null;
+module.exports.run = async function({ api, event, args }) {
+  const { threadID, messageID, senderID } = event;
+
+  // Get sender's name
+  const userNameData = await api.getUserInfo(senderID);
+  const userName = userNameData[senderID]?.name || 'User';
+
+  const cmd = args[0]?.toLowerCase();
+
+  if (!cmd) {
+    let message = `📚 Hello, ${userName}! Here are the available commands:\n\n`;
+    for (const key in commandsList) {
+      message += `• ${key}: ${commandsList[key].description}\nUsage:\n\`\`\`\n${commandsList[key].usage}\n\`\`\`\n\n`;
     }
+    message += `Type "help [command]" to get details about a specific command.`;
+
+    // Send text + image
+    return api.sendMessage(
+      {
+        body: message,
+        attachment: await global.utils.getStreamFromURL(HELP_IMAGE_URL) // or another way to fetch stream if your bot supports
+      },
+      threadID,
+      messageID
+    );
   }
 
-  // Helper: Send Help Page
-  async function sendHelpPage(page = 1) {
-    const total = commands.length;
-    const totalPages = Math.ceil(total / perPage);
+  if (commandsList[cmd]) {
+    const c = commandsList[cmd];
+    const message = `📖 Hello, ${userName}! Here's help for "${cmd}":\n\nDescription:\n${c.description}\n\nUsage:\n\`\`\`\n${c.usage}\n\`\`\``;
 
-    if (page < 1 || page > totalPages) {
-      return api.sendMessage(`❌ Invalid page. Only ${totalPages} pages exist.`, threadID, messageID);
-    }
-
-    const start = (page - 1) * perPage;
-    const end = Math.min(start + perPage, total);
-
-    const list = commands
-      .slice(start, end)
-      .map((cmd, i) => `${start + i + 1}. ${cmd}`)
-      .join('\n');
-
-    const eventList = eventCommands?.length
-      ? eventCommands.map((e, i) => `${i + 1}. ${e}`).join('\n')
-      : 'None';
-
-    const msg = `🍥 Naruto Help Menu (Page ${page}/${totalPages}) 🍥\n\n📜 Commands:\n${list}\n\n🎯 Events:\n${eventList}\n\nℹ️ Type "help [command name]" for more info.`;
-
-    return api.sendMessage({
-      body: msg,
-      attachment: await getImageBuffer(narutoImage)
-    }, threadID, messageID);
+    return api.sendMessage(
+      {
+        body: message,
+        attachment: await global.utils.getStreamFromURL(HELP_IMAGE_URL)
+      },
+      threadID,
+      messageID
+    );
   }
 
-  // No input → Page 1
-  if (!input) {
-    return sendHelpPage(1);
-  }
-
-  // Page number
-  if (!isNaN(input)) {
-    return sendHelpPage(parseInt(input));
-  }
-
-  // Specific command
-  const allCommands = [...Utils.commands.values()];
-  const command = allCommands.find(cmd =>
-    cmd.name.toLowerCase() === input || (cmd.aliases && cmd.aliases.includes(input))
-  );
-
-  if (command) {
-    const {
-      name,
-      version,
-      role,
-      aliases = [],
-      description = '',
-      usage = '',
-      credits = '',
-      cooldown = 3,
-      hasPrefix = true
-    } = command;
-
-    const roleMap = ['User', 'Admin', 'Thread Admin', 'Super Admin'];
-    const roleStr = roleMap[role] || 'Unknown';
-
-    const info = `🍥 Naruto Command Info 🍥\n\n🔹 Name: ${name}
-🔸 Version: ${version}
-🔸 Role: ${roleStr}
-🔸 Aliases: ${aliases.join(', ') || 'None'}
-🔸 Description: ${description}
-🔸 Usage: ${usage}
-🔸 Cooldown: ${cooldown}s
-🔸 Requires Prefix: ${hasPrefix ? 'Yes' : 'No'}
-🔸 Credits: ${credits}`;
-
-    return api.sendMessage({
-      body: info,
-      attachment: await getImageBuffer(narutoImage)
-    }, threadID, messageID);
-  }
-
-  return api.sendMessage(`❌ Command "${input}" not found. Type "help" to see available commands.`, threadID, messageID);
+  return api.sendMessage(`❌ Sorry, ${userName}, command "${cmd}" not found.`, threadID, messageID);
 };
