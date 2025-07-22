@@ -1,6 +1,6 @@
 const fs = require('fs');
 const crypto = require('crypto');
-const moment = require('moment');
+const moment = require('moment'); // Importing moment library
 
 module.exports.config = {
   name: 'casino',
@@ -201,12 +201,10 @@ module.exports.run = async function ({ api, event, args }) {
   // === Loan Request ===
   if (cmd === 'loan') {
     if (!user.loggedIn) return api.sendMessage('❌ Login required.', threadID, messageID);
-    if (user.loan >= LOAN_LIMIT) return api.sendMessage('❌ You have reached your loan limit.', threadID, messageID);
+    if (user.loan >= LOAN_LIMIT) return api.sendMessage(`❌ You already have the maximum loan of ${LOAN_LIMIT} coins.`, threadID, messageID);
 
-    // Request loan
-    user.loan += 100; // Example loan amount
-    saveData();
-
-    return api.sendMessage(`✅ You have successfully requested a loan of 100 coins. Your total loan is now ${user.loan} coins.`, threadID, messageID);
-  }
-};
+    // Loan Request
+    if (param === 'approve') {
+      // Only admin can approve loans
+      if (senderID !== ADMIN_ID) return api.sendMessage('❌ Only admin can approve loans.', threadID, messageID);
+      const loanUser = data.users[args[1]]; // Assuming user ID is passed for loan
