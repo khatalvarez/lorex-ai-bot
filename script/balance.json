@@ -1,0 +1,14 @@
+{
+  "USER_ID_1": {
+    "name": "User One",
+    "coins": 150
+  },
+  "USER_ID_2": {
+    "name": "User Two",
+    "coins": 320
+  },
+  "USER_ID_3": {
+    "name": "User Three",
+    "coins": 80
+  }
+}
