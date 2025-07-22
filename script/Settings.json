@@ -1,0 +1,41 @@
+{
+  "general": {
+    "prefix": "!",  // Command prefix, change it to any symbol you like
+    "language": "en",  // Default language (can be "en" for English or "tl" for Tagalog)
+    "defaultBalance": 200,  // Default balance for new users
+    "currencySymbol": "$",  // Currency symbol to use in messages (optional)
+    "timezone": "Asia/Manila",  // Set default timezone for the bot
+    "adminID": "61577040643519",  // Admin user ID who can perform admin actions
+    "logChannel": "1234567890",  // ID of the group chat where logs are sent
+    "notificationTime": "08:00",  // Time for daily notifications (e.g., 8:00 AM)
+    "freePackageAmount": 200,  // Amount of free credits provided to users each day
+    "dailyCooldown": 86400000,  // 24 hours in milliseconds (for daily free package)
+    "dailyBonusMessage": "🎉 Nakuha mo na ang iyong libreng **200 credits** sa Omega99! Magagamit mo ito sa mga API requests."
+  },
+  "permissions": {
+    "user": 0,  // Normal user
+    "admin": 1,  // Admin user
+    "superAdmin": 2  // Super admin (can access all settings)
+  },
+  "features": {
+    "enableLoan": true,  // Enable loan system for users
+    "enableProtection": true,  // Enable account protection system
+    "enableFeedback": true,  // Enable user feedback system
+    "enableGames": true,  // Enable games (set to true to allow users to play games)
+    "enableWeatherForecast": true,  // Enable weather forecast feature
+    "enableAI": true,  // Enable AI assistant in the bot
+    "enableTranslating": true  // Enable translation feature for multiple languages
+  },
+  "logs": {
+    "logFile": "./logs/botLogs.json",  // Log file path for saving bot activity logs
+    "logErrors": true,  // Log errors into the log file
+    "logCommands": true,  // Log user commands into the log file
+    "logMessage": true  // Log bot's messages into the log file
+  },
+  "ai": {
+    "aiName": "OmegaAI",  // AI Assistant Name
+    "greetingMessage": "Kumusta! Ako si OmegaAI, ang iyong assistant. Paano kita matutulungan?",  // AI Greeting message
+    "defaultReply": "Pasensya na, hindi ko naiintindihan ang iyong sinabi. Subukan mong itanong ulit.",  // AI default reply if it doesn't understand the query
+    "aiHelp": "Gamitin ang command na `!help` upang makita ang mga available na command."
+  }
+}
