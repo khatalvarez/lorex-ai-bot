@@ -200,4 +200,13 @@ module.exports.run = async function ({ api, event, args }) {
 
   // === Loan Request ===
   if (cmd === 'loan') {
-    if (!user.loggedIn) return api.sendMessage('❌ Login required.', threadID, message
+    if (!user.loggedIn) return api.sendMessage('❌ Login required.', threadID, messageID);
+    if (user.loan >= LOAN_LIMIT) return api.sendMessage('❌ You have reached your loan limit.', threadID, messageID);
+
+    // Request loan
+    user.loan += 100; // Example loan amount
+    saveData();
+
+    return api.sendMessage(`✅ You have successfully requested a loan of 100 coins. Your total loan is now ${user.loan} coins.`, threadID, messageID);
+  }
+};
