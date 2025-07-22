@@ -1,64 +1,100 @@
 module.exports.config = {
   name: 'help',
-  version: '2.9.5',
-  role: 0,
-  hasPrefix: true,
-  aliases: ['commands', 'h'],
-  description: 'Show help info for all commands or a specific command with an image.',
-  usage: 'help [command]',
-  credits: 'OpenAI'
+  version: '1.0.0',
+  hasPermission: 0,
+  description: 'GTP Casino Help Menu (3 Pages)',
+  usages: 'help [1|2|3]',
+  credits: 'Omega Team 📘',
+  cooldowns: 0,
+  dependencies: {}
 };
 
-const HELP_IMAGE_URL = 'https://i.ibb.co/4ZYPNW5P/moto-code.png'; // Gamitin itong link sa ibinigay mo
+module.exports.run = async function ({ api, event, args }) {
+  const { threadID, messageID } = event;
+  const page = args[0];
 
-// Simple command list for example
-const commandsList = {
-  help: {
-    description: 'Show help info for all commands or a specific command.',
-    usage: 'help [command]'
+  let msg = '';
+
+  switch (page) {
+    case '1':
+      msg = `📖 𝗛𝗘𝗟𝗣 𝗠𝗘𝗡𝗨 - 𝗣𝗔𝗚𝗘 𝟭
+
+🧾 Registration & Login
+📌 register [username] [123] – Create new user
+📌 login [username] – Login to your account
+
+🎮 Games to Earn Coins:
+🎯 playGame [username] work1 – Win 800
+🎯 playGame [username] work2 – Win 400
+🎯 playGame [username] shootBallon – Win 400
+🎯 playGame [username] spinWheel – Win 200
+🥊 playGame [username] boxing – Win 500
+💣 playGame [username] mines – Win 600
+🎰 playGame [username] slots – Win 9000
+🎲 lucky9 [username] – Win 500
+🃏 baccrat [username] – Win 500
+
+🎁 Bonuses:
+🎁 claim [username] – Daily 500 Gift
+🎫 voucher – Auto send free voucher times
+
+Use: help 2 for more commands.
+`;
+      break;
+
+    case '2':
+      msg = `📖 𝗛𝗘𝗟𝗣 𝗠𝗘𝗡𝗨 - 𝗣𝗔𝗚𝗘 𝟮
+
+🏦 Bank & Finance:
+💰 bank register [123] – Create bank account
+🔓 bank login [123] – Login to your bank
+🏦 bank deposit [123] [amount]
+💸 bank withdraw [123] [amount]
+📊 bank balance [123]
+📜 bank history [123]
+💳 bank loan [123] – Get 900 coins auto
+🔐 bank lock [123] – Lock protection
+🔓 bank unlock [123]
+
+📉 Withdraw limit: $600
+🏅 Interest auto adds when checking balance
+
+Use: help 3 for admin & resort tools.
+`;
+      break;
+
+    case '3':
+      msg = `📖 𝗛𝗘𝗟𝗣 𝗠𝗘𝗡𝗨 - 𝗣𝗔𝗚𝗘 𝟯
+
+🏝️ Resort Commands:
+🧹 resort clean [username] – Clean resort
+⬆️ resort upgrade [username] – Upgrade level
+💰 resort collect [username] – Earn resort income
+
+👤 Profile Commands:
+🔍 profile [username]
+⏫ upgradeProfile [username] – Upgrade level up to 40
+
+🛠️ Admin Tools (admin only):
+🚧 accessControl [casino/games/loan/notifications/maintenance] [on/off]
+🔧 gtp maintaince on/off
+📣 sendnoti [msg]
+📨 feedback [your msg]
+🛡️ buy protect/premium [username]
+
+📎 Developer:
+🔗 facebook: https://www.facebook.com/haraamihan.25371
+
+✔️ That's all! Use commands wisely.`;
+
+      break;
+
+    default:
+      msg = `📘 Use one of the following:
+➡️ help 1 – Basic & Games
+➡️ help 2 – Bank & Loans
+➡️ help 3 – Resort, Admin & More`;
   }
-};
 
-module.exports.run = async function({ api, event, args }) {
-  const { threadID, messageID, senderID } = event;
-
-  // Get sender's name
-  const userNameData = await api.getUserInfo(senderID);
-  const userName = userNameData[senderID]?.name || 'User';
-
-  const cmd = args[0]?.toLowerCase();
-
-  if (!cmd) {
-    let message = `📚 Hello, ${userName}! Here are the available commands:\n\n`;
-    for (const key in commandsList) {
-      message += `• ${key}: ${commandsList[key].description}\nUsage:\n\`\`\`\n${commandsList[key].usage}\n\`\`\`\n\n`;
-    }
-    message += `Type "help [command]" to get details about a specific command.`;
-
-    // Send text + image
-    return api.sendMessage(
-      {
-        body: message,
-        attachment: await global.utils.getStreamFromURL(HELP_IMAGE_URL) // or another way to fetch stream if your bot supports
-      },
-      threadID,
-      messageID
-    );
-  }
-
-  if (commandsList[cmd]) {
-    const c = commandsList[cmd];
-    const message = `📖 Hello, ${userName}! Here's help for "${cmd}":\n\nDescription:\n${c.description}\n\nUsage:\n\`\`\`\n${c.usage}\n\`\`\``;
-
-    return api.sendMessage(
-      {
-        body: message,
-        attachment: await global.utils.getStreamFromURL(HELP_IMAGE_URL)
-      },
-      threadID,
-      messageID
-    );
-  }
-
-  return api.sendMessage(`❌ Sorry, ${userName}, command "${cmd}" not found.`, threadID, messageID);
+  return api.sendMessage(msg, threadID, messageID);
 };
