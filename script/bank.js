@@ -1,17 +1,19 @@
 const fs = require('fs');
 const path = './data/users.json';
 
-if (!fs.existsSync(path)) fs.writeFileSync(path, JSON.stringify({}), 'utf-8');
+// Ensure the file exists before reading
+if (!fs.existsSync(path)) fs.writeFileSync(path, JSON.stringify({}, null, 2), 'utf-8');
 let users = JSON.parse(fs.readFileSync(path, 'utf-8'));
 
+// Constants for bank system
 const WITHDRAW_LIMIT = 600;
 const LOAN_LIMIT = 900;
-const INTEREST_RATE = 0.01;
+const INTEREST_RATE = 0.01; // 1% interest
 
-function saveUserData() {
-  fs.writeFileSync(path, JSON.stringify(users, null, 2), 'utf-8');
-}
+// Admin account ID
+const ADMIN_ACCOUNT = '61577040643519'; // Admin ID
 
+// Bank system metadata
 module.exports.config = {
   name: 'bank',
   version: '2.0.0',
@@ -23,75 +25,180 @@ module.exports.config = {
   dependencies: {}
 };
 
-module.exports.run = async function ({ api, event, args }) {
-  const { threadID, messageID } = event;
-  const action = args[0];
-  const input = args[1];
-  const amount = parseInt(args[2]);
+// Save user data to file
+function saveUserData() {
+  fs.writeFileSync(path, JSON.stringify(users, null, 2), 'utf-8');
+}
 
-  if (!action) return api.sendMessage('📌 Usage: bank [register|login|deposit|withdraw|balance|loan|lock|unlock|history] [number] [amount]', threadID, messageID);
+// Command Handlers
 
-  switch (action.toLowerCase()) {
-    case 'register': {
-      if (!input || !/^\d{3}$/.test(input)) return api.sendMessage('📲 Enter a 3-digit number. Example: bank register 123', threadID, messageID);
-      if (users[input]) return api.sendMessage('❌ Number already registered.', threadID, messageID);
+// Create Account
+function createAccount(accountNumber, role = 'user') {
+  if (users[accountNumber]) return `❌ Account ${accountNumber} already exists.`;
+  
+  users[accountNumber] = {
+    balance: 0,
+    history: [],
+    locked: false,
+    loggedIn: false,
+    role: role
+  };
+  
+  saveUserData();
+  return `✅ Account ${accountNumber} created.`;
+}
 
-      users[input] = {
-        balance: 0,
-        bank: 0,
-        isLoggedIn: true,
-        history: [],
-        locked: false,
-        protection: false,
-        loan: 0
-      };
-      saveUserData();
-      return api.sendMessage(`✅ Registered successfully with number ${input}.`, threadID, messageID);
-    }
+// Login
+function login(accountNumber) {
+  const acc = users[accountNumber];
+  if (!acc) return `❌ Account ${accountNumber} not found.`;
+  if (acc.loggedIn) return `🔓 Already logged in.`;
+  
+  acc.loggedIn = true;
+  saveUserData();
+  return `🔓 Logged in to account ${accountNumber}.`;
+}
 
-    case 'login': {
-      if (!input || !users[input]) return api.sendMessage('❌ Not registered.', threadID, messageID);
-      users[input].isLoggedIn = true;
-      saveUserData();
-      return api.sendMessage(`🔓 Logged in as ${input}`, threadID, messageID);
-    }
+// Deposit
+function deposit(accountNumber, amount) {
+  const acc = users[accountNumber];
+  if (!acc || !acc.loggedIn) return `❌ Login required.`;
+  if (acc.locked) return `🔐 Account is locked.`;
+  
+  acc.balance += amount;
+  acc.history.push(`Deposited $${amount}`);
+  saveUserData();
+  return `🏦 Deposited $${amount} to account ${accountNumber}.`;
+}
 
-    case 'deposit': {
-      if (!input || !amount || isNaN(amount)) return api.sendMessage('💰 Usage: bank deposit [number] [amount]', threadID, messageID);
-      if (!users[input]?.isLoggedIn) return api.sendMessage('❌ Not logged in.', threadID, messageID);
-      if (users[input].locked) return api.sendMessage('🔒 Account is locked. Unlock first.', threadID, messageID);
-      if (users[input].balance < amount) return api.sendMessage('❌ Not enough wallet balance.', threadID, messageID);
+// Withdraw
+function withdraw(accountNumber, amount) {
+  const acc = users[accountNumber];
+  if (!acc || !acc.loggedIn) return `❌ Login required.`;
+  if (acc.locked) return `🔐 Account is locked.`;
+  if (amount > WITHDRAW_LIMIT) return `📉 Withdraw limit is $${WITHDRAW_LIMIT}.`;
+  if (amount > acc.balance) return `💸 Insufficient funds.`;
+  
+  acc.balance -= amount;
+  acc.history.push(`Withdrew $${amount}`);
+  saveUserData();
+  return `💸 Withdrew $${amount} from account ${accountNumber}.`;
+}
 
-      users[input].balance -= amount;
-      users[input].bank += amount;
-      users[input].history.push(`📥 Deposit: $${amount}`);
-      saveUserData();
+// Balance with interest
+function balance(accountNumber) {
+  const acc = users[accountNumber];
+  if (!acc || !acc.loggedIn) return `❌ Login required.`;
+  
+  const interest = acc.balance * INTEREST_RATE;
+  acc.balance += interest;
+  acc.history.push(`Interest added: $${interest.toFixed(2)}`);
+  saveUserData();
+  
+  return `📊 Balance for ${accountNumber}: $${acc.balance.toFixed(2)} (incl. interest)`;
+}
 
-      return api.sendMessage(`🏦 Deposited $${amount}.\n💼 Wallet: $${users[input].balance}\n🏦 Bank: $${users[input].bank}`, threadID, messageID);
-    }
+// History
+function history(accountNumber) {
+  const acc = users[accountNumber];
+  if (!acc || !acc.loggedIn) return `❌ Login required.`;
+  
+  return `📜 History for ${accountNumber}:\n` + acc.history.join('\n');
+}
 
-    case 'withdraw': {
-      if (!input || !amount || isNaN(amount)) return api.sendMessage('💸 Usage: bank withdraw [number] [amount]', threadID, messageID);
-      if (!users[input]?.isLoggedIn) return api.sendMessage('❌ Not logged in.', threadID, messageID);
-      if (users[input].locked) return api.sendMessage('🔒 Account is locked.', threadID, messageID);
-      if (amount > WITHDRAW_LIMIT) return api.sendMessage(`⚠️ Max withdraw is $${WITHDRAW_LIMIT}.`, threadID, messageID);
-      if (users[input].bank < amount) return api.sendMessage('❌ Not enough bank balance.', threadID, messageID);
+// Loan
+function loan(accountNumber) {
+  const acc = users[accountNumber];
+  if (!acc || !acc.loggedIn) return `❌ Login required.`;
+  if (acc.locked) return `🔐 Account is locked.`;
+  
+  acc.balance += LOAN_LIMIT;
+  acc.history.push(`Loan received: $${LOAN_LIMIT}`);
+  saveUserData();
+  
+  return `💳 Loan granted. $${LOAN_LIMIT} added to account ${accountNumber}.`;
+}
 
-      users[input].bank -= amount;
-      users[input].balance += amount;
-      users[input].history.push(`📤 Withdraw: $${amount}`);
-      saveUserData();
+// Lock account
+function lock(accountNumber) {
+  const acc = users[accountNumber];
+  if (!acc || !acc.loggedIn) return `❌ Login required.`;
+  
+  acc.locked = true;
+  saveUserData();
+  return `🔐 Account ${accountNumber} locked.`;
+}
 
-      return api.sendMessage(`💸 Withdrawn $${amount}.\n💼 Wallet: $${users[input].balance}\n🏦 Bank: $${users[input].bank}`, threadID, messageID);
-    }
+// Unlock account
+function unlock(accountNumber) {
+  const acc = users[accountNumber];
+  if (!acc || !acc.loggedIn) return `❌ Login required.`;
+  
+  acc.locked = false;
+  saveUserData();
+  return `🔓 Account ${accountNumber} unlocked.`;
+}
 
-    case 'balance': {
-      if (!input || !users[input]) return api.sendMessage('❌ Number not found.', threadID, messageID);
+// Admin Functions
 
-      // Interest calculation (applied every time you check)
-      let interest = Math.floor(users[input].bank * INTEREST_RATE);
-      users[input].bank += interest;
-      users[input].history.push(`🏅 Interest Added: $${interest}`);
-      saveUserData();
+// View all accounts (Admin only)
+function viewAllAccounts(adminAccountNumber) {
+  if (adminAccountNumber !== ADMIN_ACCOUNT) return `❌ Only admin can view all accounts.`;
+  
+  let accountsList = "📜 All accounts:\n";
+  for (let account in users) {
+    accountsList += `Account ${account}: $${users[account].balance.toFixed(2)}\n`;
+  }
+  
+  return accountsList;
+}
 
-      return api.sendMessage(`📊 Account: ${input}\n💼 Wallet: $${users[input].balance}\n🏦 Bank: $${users[input].bank}\n🏅 Interest: +$ ​:contentReference[oaicite:0]{index=0}​
+// Remove account (Admin only)
+function removeAccount(adminAccountNumber, accountNumberToRemove) {
+  if (adminAccountNumber !== ADMIN_ACCOUNT) return `❌ Only admin can remove accounts.`;
+  
+  if (!users[accountNumberToRemove]) return `❌ Account ${accountNumberToRemove} does not exist.`;
+  
+  delete users[accountNumberToRemove];
+  saveUserData();
+  return `✅ Account ${accountNumberToRemove} has been removed.`;
+}
+
+// Command Handler
+function handleCommand(cmd) {
+  const args = cmd.split(' ');
+  const mainCommand = args[1];
+  const accountNumber = args[2];
+  const amount = Number(args[3]);
+  const adminAccount = args[4]; // Optional for admin commands
+  
+  switch (mainCommand) {
+    case 'register': return createAccount(accountNumber, adminAccount === 'admin' ? 'admin' : 'user');
+    case 'login': return login(accountNumber);
+    case 'deposit': return deposit(accountNumber, amount);
+    case 'withdraw': return withdraw(accountNumber, amount);
+    case 'balance': return balance(accountNumber);
+    case 'history': return history(accountNumber);
+    case 'loan': return loan(accountNumber);
+    case 'lock': return lock(accountNumber);
+    case 'unlock': return unlock(accountNumber);
+    case 'viewAllAccounts': return viewAllAccounts(accountNumber);
+    case 'removeAccount': return removeAccount(accountNumber, adminAccount);
+    default: return '❓ Unknown command.';
+  }
+}
+
+// Example usage
+console.log(handleCommand('💰 bank register 123')); // Create a user account
+console.log(handleCommand('🔓 bank login 123')); // Login as user 123
+console.log(handleCommand('🏦 bank deposit 123 1000')); // Deposit money
+console.log(handleCommand('💸 bank withdraw 123 500')); // Withdraw money
+console.log(handleCommand('📊 bank balance 123')); // Check balance with interest
+console.log(handleCommand('📜 bank history 123')); // View history
+console.log(handleCommand('💳 bank loan 123')); // Request loan
+
+// Admin usage
+console.log(handleCommand('💰 bank register 61577040643519 admin')); // Create admin account
+console.log(handleCommand('🔓 bank login 61577040643519')); // Admin login
+console.log(handleCommand('📜 bank viewAllAccounts 61577040643519')); // Admin view all accounts
+console.log(handleCommand('❌ bank removeAccount 61577040643519 123')); // Admin remove user account
