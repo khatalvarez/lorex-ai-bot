@@ -1,0 +1,25 @@
+module.exports.config = {
+  name: 'loadall',
+  version: '1.0.0',
+  hasPermission: 0,
+  usePrefix: true,
+  description: 'List all loaded commands',
+  usages: 'loadall',
+  cooldowns: 5
+};
+
+module.exports.run = async function({ api, event, args, client }) {
+  try {
+    // Assuming your commands are stored in client.commands (Map or Object)
+    const commands = client.commands || {};
+    const commandNames = Array.isArray(commands)
+      ? commands.map(cmd => cmd.config.name)
+      : Object.values(commands).map(cmd => cmd.config.name);
+
+    const message = `📋 Loaded commands (${commandNames.length}):\n\n` + commandNames.join(', ');
+    return api.sendMessage(message, event.threadID, event.messageID);
+  } catch (err) {
+    console.error(err);
+    return api.sendMessage('❌ Failed to load commands list.', event.threadID, event.messageID);
+  }
+};
