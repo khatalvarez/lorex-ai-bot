@@ -1,14 +1,14 @@
 const axios = require('axios');
 
 module.exports.config = {
-  name: 'forecast',
+  name: 'cassweather',
   version: '1.0.0',
   hasPermission: 0,
   usePrefix: false,
   aliases: ['wthr', 'forecast'],
-  description: "Shows current weather and forecast with images",
-  usages: "weather [location]",
-  credits: 'CHATGPT',
+  description: "Shows current weather and forecast",
+  usages: "cassweather [location]",
+  credits: 'Kaizenji',
   cooldowns: 0,
   dependencies: {
     "axios": ""
@@ -28,10 +28,6 @@ module.exports.run = async function({ api, event, args }) {
     }
 
     const { current, forecast, location: loc } = weatherData;
-
-    // Determine the weather icon based on conditions
-    const weatherIcon = `https://www.weatherbit.io/static/img/icons/${current.weather.icon}.png`;
-
     const message =
       `🌦️ Weather for ${loc.name}\n\n` +
       `🌡️ Temperature: ${current.temperature}°${loc.degreetype}\n` +
@@ -47,11 +43,7 @@ module.exports.run = async function({ api, event, args }) {
         ` - ☔ Chance: ${day.precip}%\n`
       ).join('\n');
 
-    // Send message with weather icon image
-    api.sendMessage({
-      body: message,
-      attachment: axios.get(weatherIcon, { responseType: 'arraybuffer' })
-    }, event.threadID, event.messageID);
+    api.sendMessage(message, event.threadID, event.messageID);
   } catch (error) {
     console.error(error);
     return api.sendMessage('❌ Failed to fetch weather data.', event.threadID, event.messageID);
