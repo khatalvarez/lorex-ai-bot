@@ -1,64 +1,54 @@
 const fs = require('fs');
-const BAL_FILE = './balance.json';
-const ADMIN_ID = '61575137262643'; // change this to your admin ID
-
-// Load or initialize balance data
-let balances = {};
-if (fs.existsSync(BAL_FILE)) {
-  try {
-    balances = JSON.parse(fs.readFileSync(BAL_FILE));
-  } catch (err) {
-    console.error('❌ Failed to load balance.json. Initializing new file.');
-    balances = {};
-  }
-} else {
-  fs.writeFileSync(BAL_FILE, '{}');
-}
-
-function saveBalances() {
-  try {
-    fs.writeFileSync(BAL_FILE, JSON.stringify(balances, null, 2));
-  } catch (err) {
-    console.error('❌ Failed to save balance.json.', err);
-  }
-}
+const path = require('path');
 
 module.exports.config = {
   name: 'balance',
   version: '1.0.0',
-  role: 0,
-  hasPrefix: true,
-  aliases: ['bal'],
-  description: 'Check your balance or (admin) see all user balances.',
-  usage: 'balance OR balance all (admin)',
-  credits: 'OpenAI + You'
+  hasPermission: 0,
+  usePrefix: true,
+  description: 'Shows combined balance and earnings from all games',
+  usages: 'balance',
+  cooldowns: 5
 };
 
-module.exports.run = async function({ api, event, args }) {
-  const { senderID, threadID, messageID } = event;
+const balanceFile = path.resolve(__dirname, 'balance.json');
 
-  // Ensure balance entry for user exists
-  if (!balances[senderID]) {
-    balances[senderID] = {
-      name: `User ${senderID}`,
-      coins: 100
-    };
-    saveBalances();
-  }
-
-  // === Admin check all balances
-  if (args[0] && args[0].toLowerCase() === 'all') {
-    if (senderID !== ADMIN_ID) return api.sendMessage('❌ Only admin can use "balance all".', threadID, messageID);
-
-    let msg = `📊 ALL USER BALANCES:\n`;
-    for (const [id, info] of Object.entries(balances)) {
-      msg += `👤 ${info.name || `User ${id}`}: ${info.coins} coins\n`;
+function getUserBalance(userID) {
+  try {
+    const data = JSON.parse(fs.readFileSync(balanceFile, 'utf-8'));
+    if (!data.users || !data.users[userID]) {
+      return {
+        casino: { balance: 0, earnings: 0 },
+        garden: { balance: 0, earnings: 0 },
+        pokemon: { balance: 0, earnings: 0 },
+        grow: { balance: 0, earnings: 0 }
+      };
     }
-
-    return api.sendMessage(msg.trim(), threadID, messageID);
+    return data.users[userID];
+  } catch (err) {
+    console.error('Failed to read balance.json:', err);
+    return {
+      casino: { balance: 0, earnings: 0 },
+      garden: { balance: 0, earnings: 0 },
+      pokemon: { balance: 0, earnings: 0 },
+      grow: { balance: 0, earnings: 0 }
+    };
   }
+}
 
-  // === Show user balance
-  const userInfo = balances[senderID];
-  return api.sendMessage(`💰 Your balance: ${userInfo.coins} coins`, threadID, messageID);
+module.exports.run = async function({ api, event }) {
+  const userID = event.senderID;
+  const userBalance = getUserBalance(userID);
+
+  const message =
+    `╔═══════════════╗\n` +
+    `║  🎮 GAME BALANCE  ║\n` +
+    `╠═══════════════╣\n` +
+    `║ Casino: ₱${userBalance.casino.balance} (Earnings: ₱${userBalance.casino.earnings})\n` +
+    `║ Garden: ₱${userBalance.garden.balance} (Earnings: ₱${userBalance.garden.earnings})\n` +
+    `║ Pokemon: ₱${userBalance.pokemon.balance} (Earnings: ₱${userBalance.pokemon.earnings})\n` +
+    `║ Grow: ₱${userBalance.grow.balance} (Earnings: ₱${userBalance.grow.earnings})\n` +
+    `╚═══════════════╝`;
+
+  return api.sendMessage(message, event.threadID, event.messageID);
 };
