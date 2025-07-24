@@ -23,7 +23,7 @@ module.exports.config = {
   aliases: ['deepseek', 'ds'],
   description: "Ask Deepseek V3 AI by Kaizenji.",
   usages: "ai2 [prompt]",
-  credits: 'Kaizenji',
+  credits: 'CHATGPT',
   cooldowns: 0,
   dependencies: {
     "axios": ""
@@ -36,13 +36,13 @@ module.exports.run = async function({ api, event, args }) {
 
   if (!input) {
     return api.sendMessage(
-      "🤔Ako si Cassandra at Mag type ka kung ano maitutulong ko sayo?",
+      "🎀Hey My name is Cassandra Your Ai School Assistant how can I assist you Today?",
       event.threadID,
       event.messageID
     );
   }
 
-  api.sendMessage("🔃Sasagutin kuna maghintay ka...", event.threadID, event.messageID);
+  api.sendMessage("🔎Generating Cassandra Ai", event.threadID, event.messageID);
 
   try {
     const { data } = await axios.get('https://kaiz-apis.gleeze.com/api/deepseek-v3', {
@@ -65,7 +65,9 @@ module.exports.run = async function({ api, event, args }) {
     return api.sendMessage(formattedResponse, event.threadID, event.messageID);
 
   } catch (error) {
-    console.error("⛔ Error in Deepseek V3:", error.message || error);
-    return api.sendMessage("⛔ An error occurred while processing your request. Please try again.", event.threadID, event.messageID);
+    console.error("⚠️ Oops! Something went wrong while processing your request.  
+Please refresh the page and try again. If the issue persists, contact support for assistance.  :", error.message || error);
+    return api.sendMessage("⚠️ Oops! Something went wrong while processing your request.  
+Please refresh the page and try again. If the issue persists, contact support for assistance.  .", event.threadID, event.messageID);
   }
 };
