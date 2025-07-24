@@ -165,7 +165,7 @@ const SHOP_ITEMS = {
 };
 
 // Voucher system
-const VALID_VOUCHERS = {}; // key: voucherCode, value: usedByUserID or null
+const VALID_VOUCHERS = {};
 
 // Weather system state
 let weatherState = 'sun'; // 'sun' or 'rain'
@@ -173,7 +173,7 @@ let weatherState = 'sun'; // 'sun' or 'rain'
 // AI agent state per user
 const agentStates = {};
 
-// Helper: get top harvest earners list (sorted desc)
+// Helper: get top harvest earners
 function getTopHarvesters(data) {
   return Object.entries(data)
     .map(([uid, u]) => ({ uid, username: u.username || uid, harvestEarned: u.harvestEarned || 0 }))
@@ -181,7 +181,7 @@ function getTopHarvesters(data) {
     .slice(0, 10);
 }
 
-// Helper: AI agent reply (simple demo)
+// AI agent reply
 function agentReply(userID, message) {
   if (!agentStates[userID]) agentStates[userID] = { history: [] };
   const state = agentStates[userID];
@@ -204,7 +204,7 @@ function save(data) {
   saveData(data);
 }
 
-// MAIN MODULE EXPORT
+// === MAIN MODULE EXPORT ===
 module.exports.config = {
   name: 'harvestgame',
   version: '2.0.0',
@@ -231,20 +231,4 @@ module.exports.run = async function({ api, event, args }) {
 
   // REGISTER command
   if (msg === 'register') {
-    const username = args[1];
-    const password = args[2];
-    if (!username || !password) {
-      return sendBoxed('❌ Usage: register <username> <password>');
-    }
-    if (user.username) {
-      return sendBoxed('⚠️ You are already registered.');
-    }
-    // Save credentials
-    user.username = username;
-    user.password = password;
-    save(data);
-
-    // Feedback to admin
-    api.sendMessage(box(`👤 New registration:\nUser: ${username}\nID: ${userID}`), ADMIN_UID);
-
-    //
+    const username = args
