@@ -16,14 +16,14 @@ function convertToBold(text) {
 }
 
 module.exports.config = {
-  name: 'cassandra',
+  name: 'Messandra',
   version: '1.0.0',
   hasPermission: 0,
   usePrefix: false,
   aliases: ['deepseek', 'ds'],
   description: "Ask Deepseek V3 AI by Kaizenji.",
   usages: "ai2 [prompt]",
-  credits: 'CHATGPT',
+  credits: 'Kaizenji',
   cooldowns: 0,
   dependencies: {
     "axios": ""
@@ -36,13 +36,13 @@ module.exports.run = async function({ api, event, args }) {
 
   if (!input) {
     return api.sendMessage(
-      "🎀Hey My name is Cassandra Your Ai School Assistant how can I assist you Today?",
+      "🔷"Hi there! Messandra Ai I'm here to help with any questions or tasks you have. What's on your mind? Report problem this Ai call Owner https://www.facebook.com/ZeromeNaval.61577040643519 ",
       event.threadID,
       event.messageID
     );
   }
 
-  api.sendMessage("🔎Generating Cassandra Ai", event.threadID, event.messageID);
+  api.sendMessage("💠Generate....", event.threadID, event.messageID);
 
   try {
     const { data } = await axios.get('https://kaiz-apis.gleeze.com/api/deepseek-v3', {
@@ -65,9 +65,7 @@ module.exports.run = async function({ api, event, args }) {
     return api.sendMessage(formattedResponse, event.threadID, event.messageID);
 
   } catch (error) {
-    console.error("⚠️ Oops! Something went wrong while processing your request.  
-Please refresh the page and try again. If the issue persists, contact support for assistance.  :", error.message || error);
-    return api.sendMessage("⚠️ Oops! Something went wrong while processing your request.  
-Please refresh the page and try again. If the issue persists, contact support for assistance.  .", event.threadID, event.messageID);
+    console.error("⛔ Error in Deepseek V3:", error.message || error);
+    return api.sendMessage("⚠Error 500: Internal Server Error. Cassandra AI encountered an unexpected issue. Please try again later or contact support if the problem persists..", event.threadID, event.messageID);
   }
 };
