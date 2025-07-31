@@ -1,0 +1,62 @@
+const fs = require('fs');
+const path = require('path');
+
+const usersPath = path.join(__dirname, 'users.json');
+
+function readUsers() {
+  try {
+    const data = fs.readFileSync(usersPath, 'utf-8');
+    return JSON.parse(data);
+  } catch (err) {
+    // File not found or invalid JSON => return empty object
+    return {};
+  }
+}
+
+function saveUsers(users) {
+  fs.writeFileSync(usersPath, JSON.stringify(users, null, 2));
+}
+
+/**
+ * Get user data by uid, or initialize if missing
+ * @param {string} uid 
+ * @returns {object} user data
+ */
+function getUser(uid) {
+  const users = readUsers();
+  if (!users[uid]) {
+    users[uid] = {
+      balance: 0,
+      xp: 0,
+      rank: "Novice",
+      username: "",
+      isAdmin: false
+    };
+    saveUsers(users);
+  }
+  return users[uid];
+}
+
+/**
+ * Update user data and save
+ * @param {string} uid 
+ * @param {object} newData 
+ */
+function updateUser(uid, newData) {
+  const users = readUsers();
+  users[uid] = { ...(users[uid] || {}), ...newData };
+  saveUsers(users);
+}
+
+// Example usage:
+const uid = "61577040643519";
+
+// Get user or create default
+const user = getUser(uid);
+console.log("User before update:", user);
+
+// Update user balance
+updateUser(uid, { balance: user.balance + 1000, xp: user.xp + 50 });
+
+const updatedUser = getUser(uid);
+console.log("User after update:", updatedUser);
