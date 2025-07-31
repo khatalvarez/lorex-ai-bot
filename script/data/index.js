@@ -1,89 +1,79 @@
 const { Client } = require('node-fbchat');
 const { getUser, updateUser } = require('./dataHandler');
-const AOI = require('aoi.js');
 
-// Initialize AOI.js Bot instance (dummy, we use only commands from here)
-const bot = new AOI.Bot({
-  token: '', // Not used here, but required by AOI.js
-  prefix: '!',
-});
-
-// Sample AOI.js command (bank status)
-bot.command({
-  name: 'bank',
-  code: async (data) => {
-    const uid = data.senderID;
-    const user = getUser(uid);
-
-    return `💰 Saldo mo: ${user.money} pesos.\n🏠 Bahay: ${user.house ? 'Meron' : 'Wala'}\n⏳ Protection active hanggang: ${user.protectionExpire > Date.now() ? new Date(user.protectionExpire).toLocaleString() : 'Wala'}`;
-  }
-});
-
-// Sample AOI.js command (buy protection 100, lasts 24 hours)
-bot.command({
-  name: 'buy protection',
-  code: async (data) => {
-    const uid = data.senderID;
-    const user = getUser(uid);
-
-    const now = Date.now();
-    if (user.lastProtectionBuy && (now - user.lastProtectionBuy) < 24 * 60 * 60 * 1000) {
-      return '🚫 Maaari ka lang bumili ng protection isang beses lang kada araw.';
-    }
-
-    if (user.money < 100) return '❌ Kulang ang pera mo para bumili ng protection.';
-
-    user.money -= 100;
-    user.protectionExpire = now + (24 * 60 * 60 * 1000); // 24h
-    user.lastProtectionBuy = now;
-
-    updateUser(uid, user);
-
-    return '✅ Bumili ka na ng protection na tatagal ng 24 oras.';
-  }
-});
-
-// Facebook client
 const client = new Client();
 
-client.on('message', async (event) => {
-  const senderID = event.senderID;
-  const message = event.body?.toLowerCase() || '';
+client.on('message', async (msg) => {
+  const uid = msg.senderID;
+  const text = msg.body.trim();
+  const user = getUser(uid);
 
-  // Map facebook sender to AOI.js data format
-  const aoiData = {
-    senderID,
-    message,
-  };
+  const send = (content) => client.sendMessage(content, uid);
 
-  // Parse command using AOI.js bot
-  // AOI.js normally listens on Discord but here we manually run the command
-  const prefix = '!';
-  if (message.startsWith(prefix)) {
-    const args = message.slice(prefix.length).trim().split(/ +/);
-    const cmdName = args.shift();
+  if (text === '!bank') {
+    const activeProtection = user.protectionUntil > Date.now();
+    return send(
+      `📦 𝗕𝗔𝗡𝗞 𝗦𝗧𝗔𝗧𝗨𝗦 📦\n\n` +
+      `💰 Pera: ₱${user.money.toLocaleString()}\n` +
+      `🏠 Bahay: ${user.house ? "Meron ✅" : "Wala ❌"}\n` +
+      `🛡️ Proteksyon: ${activeProtection ? "Active 🟢" : "Inactive 🔴"}\n` +
+      (activeProtection ? `⏰ Expire: ${new Date(user.protectionUntil).toLocaleString()}\n` : '')
+    );
+  }
 
-    const cmd = bot.commands.find((c) => c.name === cmdName || c.name === `${cmdName} ${args[0]}` || cmdName + ' ' + args[0] === c.name);
-    if (!cmd) {
-      client.sendMessage(`⚠️ Command hindi nakita. Subukan ang !bank or !buy protection`, senderID);
-      return;
+  if (text === '!buy protection') {
+    const now = Date.now();
+
+    if (user.lastProtectionBuy && now - user.lastProtectionBuy < 24 * 60 * 60 * 1000) {
+      return send("❌ Maaari ka lang bumili ng proteksyon isang beses kada 24 oras.");
     }
 
-    // Run command
-    const reply = await cmd.code({
-      senderID,
-      message,
-      args,
-    });
-
-    if (reply) {
-      client.sendMessage(reply, senderID);
+    if (user.money < 100) {
+      return send("❌ Kulang ang pera mo! Kailangan mo ng ₱100.");
     }
+
+    user.money -= 100;
+    user.protectionUntil = now + 24 * 60 * 60 * 1000; // +24 hours
+    user.lastProtectionBuy = now;
+    updateUser(uid, user);
+
+    return send("✅ Nakabili ka ng 24h proteksyon 🛡️!");
+  }
+
+  if (text === '!buy house') {
+    if (user.house) return send("🏠 May bahay ka na!");
+
+    if (user.money < 2000) {
+      return send("❌ Kailangan mo ng ₱2000 para bumili ng bahay.");
+    }
+
+    user.money -= 2000;
+    user.house = true;
+    updateUser(uid, user);
+
+    return send("✅ Congratulations! Bumili ka ng bahay 🏠");
+  }
+
+  if (text.startsWith('!feedback ')) {
+    const feedback = text.slice(10).trim();
+    const adminUID = '61577040643519';
+    client.sendMessage(`📩 Feedback mula sa UID ${uid}:\n\n${feedback}`, adminUID);
+    return send("✅ Feedback naipadala. Maraming salamat!");
+  }
+
+  if (text === '!help') {
+    return send(
+      `📖 𝗔𝗩𝗔𝗜𝗟𝗔𝗕𝗟𝗘 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗦 📖\n\n` +
+      `🔹 !bank – Tingnan ang status\n` +
+      `🔹 !buy protection – Bumili ng proteksyon ₱100\n` +
+      `🔹 !buy house – Bumili ng bahay ₱2000\n` +
+      `🔹 !feedback <message> – Magpadala ng feedback sa admin\n\n` +
+      `📞 Contact Developer: https://www.facebook.com/ZeromeNaval.61577040643519`
+    );
   }
 });
 
-// Log in with your Facebook account credentials
 client.login({
-  email: 'YOUR_FACEBOOK_EMAIL',
-  password: 'YOUR_FACEBOOK_PASSWORD',
+  email: '09121170134',
+  password: 'christian4004',
 });
