@@ -1,0 +1,50 @@
+const fs = require('fs');
+const path = require('path');
+
+const logsPath = path.join(__dirname, 'leaderboard_logs.json');
+
+function readLogs() {
+  try {
+    const data = fs.readFileSync(logsPath, 'utf-8');
+    return JSON.parse(data);
+  } catch (err) {
+    // If file not found or invalid JSON, return empty array
+    return [];
+  }
+}
+
+function saveLogs(logs) {
+  fs.writeFileSync(logsPath, JSON.stringify(logs, null, 2));
+}
+
+/**
+ * Add a new leaderboard snapshot to logs
+ * @param {Array<{uid: string, xp: number}>} topUsers 
+ */
+function addLeaderboardSnapshot(topUsers) {
+  const logs = readLogs();
+
+  logs.unshift({
+    timestamp: new Date().toISOString(),
+    topUsers
+  });
+
+  // Optional: Keep only last 20 entries
+  if (logs.length > 20) logs.pop();
+
+  saveLogs(logs);
+}
+
+// Example usage:
+
+// Suppose you have the top users array:
+const topUsersExample = [
+  { uid: '123456789', xp: 1200 },
+  { uid: '987654321', xp: 1100 },
+  { uid: '112233445', xp: 1050 }
+];
+
+// Add the snapshot to the logs
+addLeaderboardSnapshot(topUsersExample);
+
+console.log('Leaderboard log updated!');
