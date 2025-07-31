@@ -1,1 +1,24 @@
-{}
+{
+  "61577040643519": {
+    "money": 1000000,
+    "house": false,
+    "houseExpire": 0,
+    "houseLastCollect": 0,
+    "protectionExpire": 0,
+    "lastProtectionDay": 0,
+    "resort": false,
+    "resortUpgrade": 0,
+    "resortLastCollect": 0
+  },
+  "1234567890123456": {
+    "money": 50000,
+    "house": true,
+    "houseExpire": 1711920000000,
+    "houseLastCollect": 1711833600000,
+    "protectionExpire": 1711920000000,
+    "lastProtectionDay": 20250731,
+    "resort": true,
+    "resortUpgrade": 1,
+    "resortLastCollect": 1711833600000
+  }
+}
