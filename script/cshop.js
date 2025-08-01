@@ -65,7 +65,7 @@ function initUser(data, userId) {
 }
 
 // Helper: add to user history (keep max 50 records)
-function addToHistory(userId, text) {
+function addToHistory(userId, text, data) {
   if (!data[userId].history) data[userId].history = [];
   data[userId].history.push(text);
   if (data[userId].history.length > 50) data[userId].history.shift();
@@ -73,7 +73,6 @@ function addToHistory(userId, text) {
 
 // Helper: box message format (customize as needed)
 function boxMessage(text, type = 'info') {
-  // You can customize styling or emojis per type here
   const prefix = {
     success: '✅',
     error: '❌',
@@ -123,7 +122,7 @@ module.exports.run = async function ({ event, api, args, Users }) {
     saveUserData(data);
   }
   function addHistory(text) {
-    addToHistory(userId, text);
+    addToHistory(userId, text, data);
   }
 
   let reply = '';
@@ -270,7 +269,30 @@ Posts: ${data[userId].posts.length}
       break;
 
     case 'reset':
-      if (userId !== ADMIN_UID) reply = boxMessage('Admin lang ang pwedeng mag-reset!', 'error');
-      else {
+      if (userId !== ADMIN_UID) {
+        reply = boxMessage('Admin lang ang pwedeng mag-reset!', 'error');
+      } else {
         saveUserData({});
-        reply = boxMessage
+        reply = boxMessage('✅ Lahat ng data ay na-reset na!', 'success');
+      }
+      break;
+
+    case 'help':
+    default:
+      reply = boxMessage(
+        `CSHOP Commands:
+- balance: Tingnan ang balance
+- buy premium|protection: Bumili ng item
+- loan take|pay <amount>: Humiram o magbayad ng loan
+- bonus: Kumuha ng bonus bawat 1 oras
+- post <message>: Magpost sa social feed
+- feed: Tingnan ang mga post
+- profile: Ipakita ang iyong profile
+- history: Transaction history
+- reset: (Admin only) I-reset lahat ng data
+`, 'info');
+      break;
+  }
+
+  return api.sendMessage(reply, event.threadID, event.messageID);
+};
