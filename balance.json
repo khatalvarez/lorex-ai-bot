@@ -1,10 +1,1 @@
-{
-  "users": {
-    "1234567890": {
-      "casino": {"balance": 1000, "earnings": 200},
-      "garden": {"balance": 500, "earnings": 150},
-      "pokemon": {"balance": 300, "earnings": 100},
-      "grow": {"balance": 400, "earnings": 50}
-    }
-  }
-}
+{}
