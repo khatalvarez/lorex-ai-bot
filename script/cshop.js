@@ -317,4 +317,29 @@ module.exports.run = async function ({ event, api, args }) {
       {
         let allPosts = [];
         for (const uid in data) {
-          if (data[uid].posts?.length > 
+          if (data[uid].posts?.length > 0) {
+            allPosts = allPosts.concat(data[uid].posts);
+          }
+        }
+
+        if (allPosts.length === 0) {
+          reply = boxMessage('Walang mga posts sa social feed.', 'info');
+          break;
+        }
+
+        allPosts.sort((a, b) => b.id - a.id);
+
+        const postsToShow = allPosts.slice(0, 10);
+
+        reply = postsToShow.map(post => {
+          return `📱 ${post.nickname} (${post.time}):\n${post.message}\nEarnings: ₱${post.earningPercent}%`;
+        }).join('\n\n');
+      }
+      break;
+
+    default:
+      reply = boxMessage('Available commands: balance, buy, loan, bonus, post, social', 'info');
+  }
+
+  await api.sendMessage(reply, event.threadID, event.messageID);
+};
