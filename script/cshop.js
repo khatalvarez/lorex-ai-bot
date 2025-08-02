@@ -1,88 +1,59 @@
 const fs = require('fs');
 const path = require('path');
 
-const ADMIN_UID = '61575137262643'; // Admin user ID
-const LOAN_INTEREST_RATE = 0.1; // 10% interest (used if wanted)
-const BONUS_AMOUNT = 100;
-const BONUS_COOLDOWN = 3600000; // 1 hour
-const POST_REWARD = 500; // increased to 500
-const INCOME_COOLDOWN = 600000; // 10 minutes cooldown for collecting income
-const RENT_INCOME = 300; // income from rent command
+const ADMIN_UID = '61575137262643';
 
-const BUILDING_PRICE = 5000;
-const HOUSE_PRICE = 10000;
+const DATA_FILE = path.resolve(__dirname, 'cshop_users.json');
+const LOGS_FILE = path.resolve(__dirname, 'cshop_logs.json');
+const PREMIUM_REQ_FILE = path.resolve(__dirname, 'cshop_premium_requests.json');
+const MAINTENANCE_FILE = path.resolve(__dirname, 'cshop_maintenance.json');
 
-const dataFile = path.join(__dirname, 'users.json');
-const maintenanceFile = path.join(__dirname, 'maintenance.json');
+const POST_REWARD = 400;
+const BONUS_BASE = 100;
+const BONUS_COOLDOWN = 60 * 60 * 1000; // 1 hour cooldown
+const WORKER_BASE_PRICE = 1000;
+const WORKER_UPGRADE_PRICE_BASE = 100;
+const HOUSE_BASE_PRICE = 10000;
+const BUILDING_BASE_PRICE = 5000;
+const PROTECTION_PRICE = 200;
+const AGENT_PRICE = 2000;
+const LOAN_INTEREST_RATE = 0.1; // 10%
+const RENT_INCOME = 300;
 
-function loadUserData() {
+const HOUSE_UPGRADE_PRICES = [98000, 54000, 10000]; // Admin only
+const BONUS_UPGRADE_PRICES = [45000, 20000]; // Admin only
+
+// Load/save helpers
+function loadJSON(file, fallback = {}) {
   try {
-    if (!fs.existsSync(dataFile)) return {};
-    const raw = fs.readFileSync(dataFile);
-    return JSON.parse(raw);
-  } catch (e) {
-    return {};
+    if (!fs.existsSync(file)) return fallback;
+    return JSON.parse(fs.readFileSync(file));
+  } catch {
+    return fallback;
   }
 }
 
-function saveUserData(data) {
-  fs.writeFileSync(dataFile, JSON.stringify(data, null, 2));
+function saveJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-function loadMaintenance() {
-  try {
-    if (!fs.existsSync(maintenanceFile)) return false;
-    const raw = fs.readFileSync(maintenanceFile);
-    const obj = JSON.parse(raw);
-    return obj.maintenance || false;
-  } catch (e) {
-    return false;
-  }
+// Logging helper
+function logAction(text) {
+  const logs = loadJSON(LOGS_FILE, []);
+  logs.push({ timestamp: new Date().toISOString(), text });
+  if (logs.length > 100) logs.shift();
+  saveJSON(LOGS_FILE, logs);
 }
 
-function saveMaintenance(state) {
-  fs.writeFileSync(maintenanceFile, JSON.stringify({ maintenance: state }, null, 2));
+function addHistory(user, text) {
+  if (!user.history) user.history = [];
+  user.history.push(text);
+  if (user.history.length > 50) user.history.shift();
 }
 
-let maintenanceMode = loadMaintenance();
-
-function initUser(data, userId) {
-  if (!data[userId]) {
-    data[userId] = {
-      balance: 0,
-      loan: 0,
-      loanInterest: 0,
-      premium: false,
-      protection: false,
-      workers: [],
-      inventory: {},
-      posts: [],
-      history: [],
-      lastBonus: 0,
-      lastIncome: 0,
-      nickname: null,
-      houses: 0,
-      buildings: 0,
-      rentedHouses: 0,
-    };
-  }
-}
-
-// limit workers upgrades levels and income boosts per level
-const WORKER_MAX_LEVEL = 10;
-const WORKER_BASE_INCOME = 100;
-const WORKER_INCOME_BOOST_PER_LEVEL = 0.2; // 20% boost per upgrade level
-
-// Helper: add history (keep max 50)
-function addToHistory(userId, text, data) {
-  if (!data[userId].history) data[userId].history = [];
-  data[userId].history.push(text);
-  if (data[userId].history.length > 50) data[userId].history.shift();
-}
-
-// Message box helper
+// Box message formatter
 function boxMessage(text, type = 'info') {
-  const prefix = {
+  const icons = {
     success: '✅',
     error: '❌',
     warning: '⚠️',
@@ -90,27 +61,35 @@ function boxMessage(text, type = 'info') {
     loan: '💰',
     bonus: '🎁',
     social: '📱',
-    cool: '⏳',
     profile: '📊',
-  }[type] || '';
+    agent: '👨‍💼',
+  };
+  const prefix = icons[type] || '';
   return `${prefix} ${text}`;
 }
 
-// Send notification to all group threads where bot is active
-async function notifyAllGroups(api, message) {
-  try {
-    const threads = await api.getThreadList(100, null, ['INBOX']);
-    for (const thread of threads) {
-      await api.sendMessage(message, thread.threadID);
-    }
-  } catch (e) {
-    console.error('Failed to notify all groups:', e);
+// Initialize user data if none
+function initUser(data, uid) {
+  if (!data[uid]) {
+    data[uid] = {
+      balance: 0,
+      loan: 0,
+      premium: false,
+      protection: false,
+      workers: [],
+      houses: 0,
+      buildings: 0,
+      rentedHouses: 0,
+      nickname: null,
+      lastBonus: 0,
+      posts: [],
+      history: [],
+      lastIncomeTime: 0,
+      agents: [],
+      houseUpgradeLevel: 0,
+      bonusLevel: 0,
+    };
   }
-}
-
-function setMaintenanceMode(state) {
-  maintenanceMode = state;
-  saveMaintenance(state);
 }
 
 module.exports.config = {
@@ -118,228 +97,217 @@ module.exports.config = {
   version: '1.0.0',
   hasPermission: 0,
   usePrefix: false,
-  aliases: [''],
-  description: "CSHOP command - manage economy features like premium, loans, posts, workers, buildings, houses etc.",
+  aliases: [],
+  description: 'CSHOP economy commands with premium, loans, houses, workers, agents, posts, logs',
 };
 
 module.exports.run = async function ({ event, api, args }) {
   const userId = event.senderID;
-  const params = args;
-  const command = params[0]?.toLowerCase() || 'help';
+  const threadID = event.threadID;
+  const messageID = event.messageID;
+  const input = args.join(' ').trim();
+  const cmd = (args[0] || '').toLowerCase();
 
-  const data = loadUserData();
+  // Load data
+  let data = loadJSON(DATA_FILE, {});
+  let maintenance = loadJSON(MAINTENANCE_FILE, { maintenance: false }).maintenance;
+  let premiumRequests = loadJSON(PREMIUM_REQ_FILE, []);
+
+  if (maintenance && userId !== ADMIN_UID) {
+    return api.sendMessage(boxMessage('⚠️ CSHOP is under maintenance, try again later.', 'warning'), threadID, messageID);
+  }
+
   initUser(data, userId);
+  const user = data[userId];
 
-  if (maintenanceMode && userId !== ADMIN_UID) {
-    return api.sendMessage(boxMessage('⚠ MAINTENANCE MODE ACTIVE. Hindi pwedeng magamit ang cshop ngayon.', 'warning'), event.threadID, event.messageID);
+  async function save() {
+    saveJSON(DATA_FILE, data);
   }
 
-  // Save helper
-  function save() {
-    saveUserData(data);
+  async function notifyAllGroups(message) {
+    try {
+      const threads = await api.getThreadList(100, null, ['INBOX']);
+      for (const t of threads) {
+        await api.sendMessage(message, t.threadID);
+      }
+    } catch (e) {
+      console.error('Notify all groups error:', e);
+    }
   }
-  function addHistory(text) {
-    addToHistory(userId, text, data);
-  }
 
-  let reply = '';
+  // --- COMMAND HANDLERS ---
+  switch (cmd) {
+    case 'help': {
+      const helpmsg = boxMessage(
+        `Available commands:\n` +
+          `balance - Check balance\n` +
+          `buy <premium|protection|building|house|worker|agent> - Purchase items\n` +
+          `loan take <amount> - Take a loan\n` +
+          `loan pay <amount> - Pay loan\n` +
+          `bonus - Claim bonus (cooldown applies)\n` +
+          `bonusupgrade <level> - Admin only bonus upgrade\n` +
+          `post <message> - Post and earn ₱${POST_REWARD}\n` +
+          `social - Show social feed\n` +
+          `nickname <name> - Set nickname\n` +
+          `profile - Show your profile\n` +
+          `rent house - Collect rent income\n` +
+          `rent status - Show your rented houses\n` +
+          `premiumrequest - Request free premium (admin approval)\n` +
+          `premiumapprove <uid> - Admin approve premium\n` +
+          `logs - Show logs (admin only)\n` +
+          `agent list - Show available agents\n` +
+          `agent buy - Buy agent\n` +
+          `agent show - Show owned agents\n` +
+          `interest - Show loan interest\n` +
+          `houseupgrade <level> - Admin house price upgrade\n` +
+          `worker upgrade <id> - Upgrade worker\n` +
+          `setnickname <name> - Set nickname\n` +
+          `cshop help - Show this help`,
+        'info'
+      );
+      return api.sendMessage(helpmsg, threadID, messageID);
+    }
 
-  switch (command) {
-    case 'balance':
-      reply = boxMessage(`💰 Balance mo: ₱${data[userId].balance}`, 'profile');
-      break;
+    case 'balance': {
+      return api.sendMessage(boxMessage(`💰 Your balance: ₱${user.balance}`, 'profile'), threadID, messageID);
+    }
 
-    case 'buy':
-      {
-        const item = params[1]?.toLowerCase();
-        if (!item) {
-          reply = boxMessage('❌ Ano ang bibilhin? (premium, protection, building, house, worker)', 'error');
-          break;
-        }
+    case 'buy': {
+      const item = (args[1] || '').toLowerCase();
+      if (!item) return api.sendMessage(boxMessage('❌ Please specify an item to buy.', 'error'), threadID, messageID);
 
-        if (item === 'premium') {
-          const price = 500;
-          if (data[userId].premium) reply = boxMessage('May premium ka na! 🎉', 'success');
-          else if (data[userId].balance < price) reply = boxMessage('Kulang pera mo para sa premium (₱500).', 'error');
-          else {
-            data[userId].balance -= price;
-            data[userId].premium = true;
-            save();
-            addHistory('🎉 Naging PREMIUM Member');
-            reply = boxMessage(`🎉 Premium Activated!\n\n𝐁𝐞𝐧𝐞𝐟𝐢𝐭𝐬:\n- 2x earnings\n- Exclusive investments\n- Higher rewards\n- Priority support\n- Advanced tools`, 'success');
-            await api.sendMessage(`📢 User ${data[userId].nickname || userId} bought premium!`, event.threadID);
-          }
-        } else if (item === 'protection') {
-          const price = 300;
-          if (data[userId].protection) reply = boxMessage('May protection ka na! 🛡️', 'success');
-          else if (data[userId].balance < price) reply = boxMessage('Kulang pera mo para sa protection (₱300).', 'error');
-          else {
-            data[userId].balance -= price;
-            data[userId].protection = true;
-            save();
-            addHistory('🛡️ Bumili ng Protection');
-            reply = boxMessage('🛡️ Protection Activated!', 'success');
-            await api.sendMessage(`📢 User ${data[userId].nickname || userId} bought protection!`, event.threadID);
-          }
-        } else if (item === 'building') {
-          if (data[userId].balance < BUILDING_PRICE) reply = boxMessage(`Kulang pera mo para bumili ng building (₱${BUILDING_PRICE}).`, 'error');
-          else {
-            data[userId].balance -= BUILDING_PRICE;
-            data[userId].buildings++;
-            save();
-            addHistory(`🏢 Bumili ng building (Total: ${data[userId].buildings})`);
-            reply = boxMessage(`🏢 Bumili ka ng building! Mayroon ka nang ${data[userId].buildings} building(s).`, 'success');
-            // Notify all groups automatically (no approval)
-            await notifyAllGroups(api, `📢 User ${data[userId].nickname || userId} bumili ng building!`);
-          }
-        } else if (item === 'house') {
-          if (data[userId].balance < HOUSE_PRICE) reply = boxMessage(`Kulang pera mo para bumili ng house (₱${HOUSE_PRICE}).`, 'error');
-          else {
-            data[userId].balance -= HOUSE_PRICE;
-            data[userId].houses++;
-            save();
-            addHistory(`🏠 Bumili ng house (Total: ${data[userId].houses})`);
-            reply = boxMessage(`🏠 Bumili ka ng house! Mayroon ka nang ${data[userId].houses} house(s).`, 'success');
-            await notifyAllGroups(api, `📢 User ${data[userId].nickname || userId} bumili ng house!`);
-          }
-        } else if (item === 'worker') {
-          const workerPrice = 1000;
-          if (data[userId].balance < workerPrice) reply = boxMessage(`Kulang pera mo para bumili ng worker (₱${workerPrice}).`, 'error');
-          else {
-            data[userId].balance -= workerPrice;
-            // add new worker object
-            data[userId].workers.push({
-              id: Date.now(),
-              level: 1,
-              incomeBoost: 0,
-            });
-            save();
-            addHistory('👷 Bumili ng worker');
-            reply = boxMessage(`👷 Bumili ka ng worker! Mayroon ka nang ${data[userId].workers.length} worker(s).`, 'success');
-            await notifyAllGroups(api, `📢 User ${data[userId].nickname || userId} bumili ng worker!`);
-          }
+      if (item === 'premium') {
+        const price = 500;
+        if (user.premium) return api.sendMessage(boxMessage('🎉 You already have premium!', 'success'), threadID, messageID);
+        if (user.balance < price) return api.sendMessage(boxMessage('❌ Not enough balance for premium (₱500)', 'error'), threadID, messageID);
+        user.balance -= price;
+        user.premium = true;
+        addHistory(user, 'Activated Premium');
+        logAction(`User ${user.nickname || userId} bought premium for ₱${price}`);
+        await save();
+        await api.sendMessage(boxMessage('🎉 Premium Activated! You get 2x earnings, exclusive benefits.', 'success'), threadID, messageID);
+        await notifyAllGroups(`📢 User ${user.nickname || userId} bought premium!`);
+        return;
+      } else if (item === 'protection') {
+        if (user.protection) return api.sendMessage(boxMessage('🛡️ You already have protection!', 'success'), threadID, messageID);
+        if (user.balance < PROTECTION_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for protection (₱${PROTECTION_PRICE})`, 'error'), threadID, messageID);
+        user.balance -= PROTECTION_PRICE;
+        user.protection = true;
+
+        // Admin gets 200 from protection buy
+        initUser(data, ADMIN_UID);
+        data[ADMIN_UID].balance += PROTECTION_PRICE;
+        addHistory(user, 'Bought Protection');
+        logAction(`User ${user.nickname || userId} bought protection for ₱${PROTECTION_PRICE}`);
+        await save();
+        await api.sendMessage(boxMessage('🛡️ Protection activated!', 'success'), threadID, messageID);
+        await notifyAllGroups(`📢 User ${user.nickname || userId} bought protection! (Admin earned ₱${PROTECTION_PRICE})`);
+        return;
+      } else if (item === 'building') {
+        if (user.balance < BUILDING_BASE_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for building (₱${BUILDING_BASE_PRICE})`, 'error'), threadID, messageID);
+        user.balance -= BUILDING_BASE_PRICE;
+        user.buildings++;
+        addHistory(user, `Bought building, total ${user.buildings}`);
+        logAction(`User ${user.nickname || userId} bought building for ₱${BUILDING_BASE_PRICE}`);
+        await save();
+        await api.sendMessage(boxMessage(`🏢 You bought a building! Total buildings: ${user.buildings}`, 'success'), threadID, messageID);
+        await notifyAllGroups(`📢 User ${user.nickname || userId} bought a building!`);
+        return;
+      } else if (item === 'house') {
+        if (user.balance < HOUSE_BASE_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for house (₱${HOUSE_BASE_PRICE})`, 'error'), threadID, messageID);
+        user.balance -= HOUSE_BASE_PRICE;
+        user.houses++;
+        addHistory(user, `Bought house, total ${user.houses}`);
+        logAction(`User ${user.nickname || userId} bought house for ₱${HOUSE_BASE_PRICE}`);
+        await save();
+        await api.sendMessage(boxMessage(`🏠 You bought a house! Total houses: ${user.houses}`, 'success'), threadID, messageID);
+        await notifyAllGroups(`📢 User ${user.nickname || userId} bought a house!`);
+        return;
+      } else if (item === 'worker') {
+        if (user.balance < WORKER_BASE_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for worker (₱${WORKER_BASE_PRICE})`, 'error'), threadID, messageID);
+        user.balance -= WORKER_BASE_PRICE;
+        user.workers.push({ id: Date.now(), level: 1, incomeBoost: 0 });
+        addHistory(user, 'Bought worker');
+        logAction(`User ${user.nickname || userId} bought worker for ₱${WORKER_BASE_PRICE}`);
+        await save();
+        await api.sendMessage(boxMessage('👷 You bought a worker!', 'success'), threadID, messageID);
+        await notifyAllGroups(`📢 User ${user.nickname || userId} bought a worker!`);
+        return;
+      } else if (item === 'agent') {
+        if (user.balance < AGENT_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for agent (₱${AGENT_PRICE})`, 'error'), threadID, messageID);
+        user.balance -= AGENT_PRICE;
+        user.agents.push({ id: Date.now(), income: 100 });
+        addHistory(user, 'Bought agent');
+        logAction(`User ${user.nickname || userId} bought agent for ₱${AGENT_PRICE}`);
+        await save();
+        await api.sendMessage(boxMessage('👨‍💼 You bought an agent!', 'success'), threadID, messageID);
+        await notifyAllGroups(`📢 User ${user.nickname || userId} bought an agent!`);
+        return;
+      } else {
+        return api.sendMessage(boxMessage('❌ Unknown item to buy.', 'error'), threadID, messageID);
+      }
+    }
+
+    case 'loan': {
+      const subcmd = (args[1] || '').toLowerCase();
+      const amount = parseInt(args[2]) || 0;
+      if (subcmd === 'take') {
+        if (!amount || amount <= 0) return api.sendMessage(boxMessage('❌ Specify a valid loan amount.', 'error'), threadID, messageID);
+        user.balance += amount;
+        user.loan += amount;
+        user.loanInterest += amount * LOAN_INTEREST_RATE;
+        addHistory(user, `Took loan ₱${amount} + interest ₱${(amount * LOAN_INTEREST_RATE).toFixed(2)}`);
+        logAction(`User ${user.nickname || userId} took loan ₱${amount}`);
+        await save();
+        return api.sendMessage(boxMessage(`💰 Loan taken: ₱${amount}. Interest: ₱${(amount * LOAN_INTEREST_RATE).toFixed(2)}`, 'loan'), threadID, messageID);
+      } else if (subcmd === 'pay') {
+        if (!amount || amount <= 0) return api.sendMessage(boxMessage('❌ Specify a valid pay amount.', 'error'), threadID, messageID);
+        if (user.balance < amount) return api.sendMessage(boxMessage('❌ Not enough balance to pay loan.', 'error'), threadID, messageID);
+        if (user.loan <= 0) return api.sendMessage(boxMessage('❌ You have no loan to pay.', 'error'), threadID, messageID);
+        let payAmount = Math.min(amount, user.loan + user.loanInterest);
+        user.balance -= payAmount;
+        if (payAmount > user.loan) {
+          user.loanInterest -= (payAmount - user.loan);
+          user.loan = 0;
+          if (user.loanInterest < 0) user.loanInterest = 0;
         } else {
-          reply = boxMessage('❌ Invalid item. Try: buy premium / buy protection / buy building / buy house / buy worker', 'error');
+          user.loan -= payAmount;
         }
+        addHistory(user, `Paid loan ₱${payAmount.toFixed(2)}`);
+        logAction(`User ${user.nickname || userId} paid loan ₱${payAmount.toFixed(2)}`);
+        await save();
+        return api.sendMessage(boxMessage(`💰 Paid loan ₱${payAmount.toFixed(2)}. Remaining loan: ₱${user.loan.toFixed(2)}`, 'loan'), threadID, messageID);
+      } else {
+        return api.sendMessage(boxMessage('❌ Use loan take <amount> or loan pay <amount>.', 'error'), threadID, messageID);
       }
-      break;
+    }
 
-    case 'loan':
-      {
-        const sub = params[1];
-        const amount = parseInt(params[2]);
-        if (sub === 'take') {
-          if (isNaN(amount) || amount <= 0) reply = boxMessage('Invalid loan amount.', 'error');
-          else {
-            // unlimited loan, interest applied
-            const interest = amount * LOAN_INTEREST_RATE;
-            data[userId].loan += amount;
-            data[userId].loanInterest += interest;
-            data[userId].balance += amount;
-            save();
-            addHistory(`Nangutang ng ₱${amount} with interest ₱${interest.toFixed(2)}`);
-            reply = boxMessage(`💰 Humiram ka ng ₱${amount}.\nInterest: ₱${interest.toFixed(2)}\nKabuuang babayaran: ₱${(amount + interest).toFixed(2)}`, 'loan');
-            // Notify all groups including admin
-            await notifyAllGroups(api, `⚠️ User ${data[userId].nickname || userId} nangutang ng ₱${amount}!`);
-          }
-        } else if (sub === 'pay') {
-          if (isNaN(amount) || amount <= 0) reply = boxMessage('Invalid payment amount.', 'error');
-          else if (data[userId].loan <= 0) reply = boxMessage('Walang utang na kailangang bayaran.', 'info');
-          else if (data[userId].balance < amount) reply = boxMessage('Kulang pera mo para magbayad.', 'error');
-          else {
-            let payPrincipal = 0;
-            let payInterest = 0;
-            if (amount >= data[userId].loan + data[userId].loanInterest) {
-              payPrincipal = data[userId].loan;
-              payInterest = data[userId].loanInterest;
-            } else if (amount <= data[userId].loanInterest) {
-              payInterest = amount;
-            } else {
-              payInterest = data[userId].loanInterest;
-              payPrincipal = amount - payInterest;
-            }
-            data[userId].loan -= payPrincipal;
-            data[userId].loanInterest -= payInterest;
-            data[userId].balance -= amount;
-
-            initUser(data, ADMIN_UID);
-            data[ADMIN_UID].balance += payPrincipal;
-            save();
-            addHistory(`Nagbayad ng ₱${amount} sa loan (Principal: ₱${payPrincipal.toFixed(2)}, Interest: ₱${payInterest.toFixed(2)})`);
-            reply = boxMessage(`💰 Nagbayad ka ng ₱${amount} sa loan.\nPrincipal: ₱${payPrincipal.toFixed(2)}\nInterest: ₱${payInterest.toFixed(2)}\nUtang: ₱${data[userId].loan.toFixed(2)}\nInterest natira: ₱${data[userId].loanInterest.toFixed(2)}`, 'loan');
-          }
-        } else {
-          reply = boxMessage('❌ Subcommands: loan take <amount>, loan pay <amount>', 'error');
-        }
+    case 'bonus': {
+      const now = Date.now();
+      if (now - user.lastBonus < BONUS_COOLDOWN) {
+        return api.sendMessage(boxMessage('⏳ Bonus is on cooldown. Try later.', 'cool'), threadID, messageID);
       }
-      break;
+      let bonus = BONUS_BASE + user.bonusLevel * 50;
+      if (user.premium) bonus *= 2;
+      user.balance += bonus;
+      user.lastBonus = now;
+      addHistory(user, `Claimed bonus ₱${bonus}`);
+      logAction(`User ${user.nickname || userId} claimed bonus ₱${bonus}`);
+      await save();
+      return api.sendMessage(boxMessage(`🎁 You claimed bonus ₱${bonus}!`, 'bonus'), threadID, messageID);
+    }
 
-    case 'bonus':
-      {
-        const now = Date.now();
-        if (now - data[userId].lastBonus < BONUS_COOLDOWN) {
-          const left = Math.ceil((BONUS_COOLDOWN - (now - data[userId].lastBonus)) / 60000);
-          reply = boxMessage(`⏳ Hintay ka pa ng ${left} minuto bago ka makagamit ng bonus muli.`, 'cool');
-        } else {
-          data[userId].balance += BONUS_AMOUNT;
-          data[userId].lastBonus = now;
-          save();
-          addHistory(`Nakatanggap ng bonus na ₱${BONUS_AMOUNT}`);
-          reply = boxMessage(`🎁 Bonus! Nakatanggap ka ng ₱${BONUS_AMOUNT}`, 'bonus');
-        }
+    case 'bonusupgrade': {
+      if (userId !== ADMIN_UID) return api.sendMessage(boxMessage('❌ Admins only.', 'error'), threadID, messageID);
+      const level = parseInt(args[1]);
+      if (!level || level < 1 || level > BONUS_UPGRADE_PRICES.length) return api.sendMessage(boxMessage('❌ Invalid bonus upgrade level.', 'error'), threadID, messageID);
+      const price = BONUS_UPGRADE_PRICES[level - 1];
+      if (data[ADMIN_UID].balance < price) return api.sendMessage(boxMessage('❌ Admin does not have enough balance.', 'error'), threadID, messageID);
+      data[ADMIN_UID].balance -= price;
+      for (const uid in data) {
+        if (uid === ADMIN_UID) continue;
+        if (data[uid].bonusLevel < level) data[uid].bonusLevel = level;
       }
-      break;
-
-    case 'post':
-      {
-        const msg = params.slice(1).join(' ').trim();
-        if (!msg) {
-          reply = boxMessage('❌ Walang post na na-type.', 'error');
-          break;
-        }
-        const post = {
-          id: Date.now(),
-          userId,
-          message: msg,
-          time: new Date().toLocaleString(),
-          nickname: data[userId].nickname || 'Anonymous',
-          earningPercent: ((data[userId].balance / 10000) * 100).toFixed(2),
-        };
-        data[userId].posts.push(post);
-        data[userId].balance += POST_REWARD;
-        save();
-        addHistory('Nagpost ng bagong social post.');
-        reply = boxMessage(`📱 Successfully posted! Nakatanggap ka ng ₱${POST_REWARD}`, 'social');
-      }
-      break;
-
-    case 'social':
-      {
-        let allPosts = [];
-        for (const uid in data) {
-          if (data[uid].posts?.length > 0) {
-            allPosts = allPosts.concat(data[uid].posts);
-          }
-        }
-
-        if (allPosts.length === 0) {
-          reply = boxMessage('Walang mga posts sa social feed.', 'info');
-          break;
-        }
-
-        allPosts.sort((a, b) => b.id - a.id);
-
-        const postsToShow = allPosts.slice(0, 10);
-
-        reply = postsToShow.map(post => {
-          return `📱 ${post.nickname} (${post.time}):\n${post.message}\nEarnings: ₱${post.earningPercent}%`;
-        }).join('\n\n');
-      }
-      break;
-
-    default:
-      reply = boxMessage('Available commands: balance, buy, loan, bonus, post, social', 'info');
-  }
-
-  await api.sendMessage(reply, event.threadID, event.messageID);
-};
+      addLog(`Admin upgraded bonus to level ${level} for ₱${price}`);
+      await save();
+      return api.sendMessage(box
