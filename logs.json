@@ -1,0 +1,29 @@
+{
+  "logs": [
+    {
+      "time": "2025-08-02T08:15:23.456Z",
+      "user": "61575137262643",
+      "action": "Admin approved free premium for user 9876543210"
+    },
+    {
+      "time": "2025-08-02T09:00:12.789Z",
+      "user": "9876543210",
+      "action": "User requested free premium"
+    },
+    {
+      "time": "2025-08-02T10:30:45.123Z",
+      "user": "1234567890",
+      "action": "User bought worker"
+    },
+    {
+      "time": "2025-08-02T11:00:00.000Z",
+      "user": "61575137262643",
+      "action": "Admin upgraded house price to ₱98,000"
+    },
+    {
+      "time": "2025-08-02T12:05:30.500Z",
+      "user": "222333444",
+      "action": "User posted social message"
+    }
+  ]
+}
