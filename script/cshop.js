@@ -6,90 +6,66 @@ const ADMIN_UID = '61575137262643';
 const DATA_FILE = path.resolve(__dirname, 'cshop_users.json');
 const LOGS_FILE = path.resolve(__dirname, 'cshop_logs.json');
 const PREMIUM_REQ_FILE = path.resolve(__dirname, 'cshop_premium_requests.json');
-const MAINTENANCE_FILE = path.resolve(__dirname, 'cshop_maintenance.json');
+const MAINT_FILE = path.resolve(__dirname, 'cshop_maintenance.json');
 
-const POST_REWARD = 400;
+const POST_REWARD_BASE = 400;
 const BONUS_BASE = 100;
-const BONUS_COOLDOWN = 60 * 60 * 1000; // 1 hour cooldown
-const WORKER_BASE_PRICE = 1000;
-const WORKER_UPGRADE_PRICE_BASE = 100;
-const HOUSE_BASE_PRICE = 10000;
-const BUILDING_BASE_PRICE = 5000;
-const PROTECTION_PRICE = 200;
-const AGENT_PRICE = 2000;
-const LOAN_INTEREST_RATE = 0.1; // 10%
+const BONUS_COOLDOWN = 60 * 60 * 1000;
 const RENT_INCOME = 300;
 
-const HOUSE_UPGRADE_PRICES = [98000, 54000, 10000]; // Admin only
-const BONUS_UPGRADE_PRICES = [45000, 20000]; // Admin only
+const PRICES = {
+  house: 10000,
+  building: 5000,
+  protection: 200,
+  worker: 1000,
+  agent: 2000,
+  workerUpgradeBase: 100,
+  houseUpgrade: [98000, 54000, 10000],
+  bonusUpgrade: [45000, 20000],
+};
 
-// Load/save helpers
-function loadJSON(file, fallback = {}) {
+const LOAN_INTEREST_RATE = 0.1;
+
+function loadJSON(file, def = {}) {
   try {
-    if (!fs.existsSync(file)) return fallback;
+    if (!fs.existsSync(file)) return def;
     return JSON.parse(fs.readFileSync(file));
-  } catch {
-    return fallback;
-  }
+  } catch { return def; }
 }
 
 function saveJSON(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-// Logging helper
 function logAction(text) {
-  const logs = loadJSON(LOGS_FILE, []);
-  logs.push({ timestamp: new Date().toISOString(), text });
-  if (logs.length > 100) logs.shift();
+  const logs = loadJSON(LOGS_FILE, []).slice(-99);
+  logs.push({ time: new Date().toISOString(), text });
   saveJSON(LOGS_FILE, logs);
 }
 
-function addHistory(user, text) {
-  if (!user.history) user.history = [];
-  user.history.push(text);
-  if (user.history.length > 50) user.history.shift();
-}
-
-// Box message formatter
-function boxMessage(text, type = 'info') {
-  const icons = {
-    success: '✅',
-    error: '❌',
-    warning: '⚠️',
-    info: 'ℹ️',
-    loan: '💰',
-    bonus: '🎁',
-    social: '📱',
-    profile: '📊',
-    agent: '👨‍💼',
-  };
-  const prefix = icons[type] || '';
-  return `${prefix} ${text}`;
-}
-
-// Initialize user data if none
 function initUser(data, uid) {
   if (!data[uid]) {
     data[uid] = {
       balance: 0,
-      loan: 0,
+      loan: 0, loanInterest: 0,
       premium: false,
       protection: false,
-      workers: [],
-      houses: 0,
-      buildings: 0,
-      rentedHouses: 0,
+      houses: 0, buildings: 0, rentedHouses: 0,
+      workers: [], workerUpgradeLevel: 0,
       nickname: null,
       lastBonus: 0,
-      posts: [],
-      history: [],
-      lastIncomeTime: 0,
-      agents: [],
-      houseUpgradeLevel: 0,
-      bonusLevel: 0,
+      posts: [], history: [],
+      agents: [], houseUpgradeLevel: 0, bonusLevel: 0,
     };
   }
+}
+
+function box(text, type = 'info') {
+  const icons = {
+    success: '✅', error: '❌', warning: '⚠️',
+    info: 'ℹ️', loan: '💰', bonus: '🎁', social: '📱', profile: '📊',
+  };
+  return (icons[type] || '') + ' ' + text;
 }
 
 module.exports.config = {
@@ -97,217 +73,286 @@ module.exports.config = {
   version: '1.0.0',
   hasPermission: 0,
   usePrefix: false,
-  aliases: [],
-  description: 'CSHOP economy commands with premium, loans, houses, workers, agents, posts, logs',
 };
 
-module.exports.run = async function ({ event, api, args }) {
-  const userId = event.senderID;
+module.exports.run = async ({ event, api, args }) => {
+  const uid = event.senderID;
   const threadID = event.threadID;
-  const messageID = event.messageID;
-  const input = args.join(' ').trim();
+  const msgID = event.messageID;
   const cmd = (args[0] || '').toLowerCase();
 
-  // Load data
   let data = loadJSON(DATA_FILE, {});
-  let maintenance = loadJSON(MAINTENANCE_FILE, { maintenance: false }).maintenance;
-  let premiumRequests = loadJSON(PREMIUM_REQ_FILE, []);
+  let maintenance = loadJSON(MAINT_FILE, { maintenance: false }).maintenance;
+  let premiumReq = loadJSON(PREMIUM_REQ_FILE, []);
 
-  if (maintenance && userId !== ADMIN_UID) {
-    return api.sendMessage(boxMessage('⚠️ CSHOP is under maintenance, try again later.', 'warning'), threadID, messageID);
+  if (maintenance && uid !== ADMIN_UID) {
+    return api.sendMessage(box('⚠️ CSHOP under maintenance', 'warning'), threadID, msgID);
   }
 
-  initUser(data, userId);
-  const user = data[userId];
+  initUser(data, uid);
+  initUser(data, ADMIN_UID);
+  const user = data[uid];
 
   async function save() {
     saveJSON(DATA_FILE, data);
   }
-
-  async function notifyAllGroups(message) {
+  async function notifyAll(msg) {
     try {
-      const threads = await api.getThreadList(100, null, ['INBOX']);
-      for (const t of threads) {
-        await api.sendMessage(message, t.threadID);
+      const list = await api.getThreadList(100, null, ['INBOX']);
+      for (const t of list) {
+        await api.sendMessage(msg, t.threadID);
       }
-    } catch (e) {
-      console.error('Notify all groups error:', e);
-    }
+    } catch {}
   }
 
-  // --- COMMAND HANDLERS ---
   switch (cmd) {
-    case 'help': {
-      const helpmsg = boxMessage(
-        `Available commands:\n` +
-          `balance - Check balance\n` +
-          `buy <premium|protection|building|house|worker|agent> - Purchase items\n` +
-          `loan take <amount> - Take a loan\n` +
-          `loan pay <amount> - Pay loan\n` +
-          `bonus - Claim bonus (cooldown applies)\n` +
-          `bonusupgrade <level> - Admin only bonus upgrade\n` +
-          `post <message> - Post and earn ₱${POST_REWARD}\n` +
-          `social - Show social feed\n` +
-          `nickname <name> - Set nickname\n` +
-          `profile - Show your profile\n` +
-          `rent house - Collect rent income\n` +
-          `rent status - Show your rented houses\n` +
-          `premiumrequest - Request free premium (admin approval)\n` +
-          `premiumapprove <uid> - Admin approve premium\n` +
-          `logs - Show logs (admin only)\n` +
-          `agent list - Show available agents\n` +
-          `agent buy - Buy agent\n` +
-          `agent show - Show owned agents\n` +
-          `interest - Show loan interest\n` +
-          `houseupgrade <level> - Admin house price upgrade\n` +
-          `worker upgrade <id> - Upgrade worker\n` +
-          `setnickname <name> - Set nickname\n` +
-          `cshop help - Show this help`,
-        'info'
-      );
-      return api.sendMessage(helpmsg, threadID, messageID);
-    }
+    case 'help':
+      return api.sendMessage(box(`
+Commands:
+balance • buy • rent • rentstatus • loan take/pay • bonus • bonusupgrade (admin) • post • social
+nickname • profile • premiumrequest • premiumapprove (admin) • logs (admin)
+agent list/buy/show • worker upgrade <id> • houseupgrade (admin) • setnickname
+`, 'info'), threadID, msgID);
 
-    case 'balance': {
-      return api.sendMessage(boxMessage(`💰 Your balance: ₱${user.balance}`, 'profile'), threadID, messageID);
-    }
+    case 'balance':
+      return api.sendMessage(box(`💰Balance: ₱${user.balance}`, 'profile'), threadID, msgID);
 
     case 'buy': {
       const item = (args[1] || '').toLowerCase();
-      if (!item) return api.sendMessage(boxMessage('❌ Please specify an item to buy.', 'error'), threadID, messageID);
-
-      if (item === 'premium') {
-        const price = 500;
-        if (user.premium) return api.sendMessage(boxMessage('🎉 You already have premium!', 'success'), threadID, messageID);
-        if (user.balance < price) return api.sendMessage(boxMessage('❌ Not enough balance for premium (₱500)', 'error'), threadID, messageID);
-        user.balance -= price;
-        user.premium = true;
-        addHistory(user, 'Activated Premium');
-        logAction(`User ${user.nickname || userId} bought premium for ₱${price}`);
-        await save();
-        await api.sendMessage(boxMessage('🎉 Premium Activated! You get 2x earnings, exclusive benefits.', 'success'), threadID, messageID);
-        await notifyAllGroups(`📢 User ${user.nickname || userId} bought premium!`);
-        return;
-      } else if (item === 'protection') {
-        if (user.protection) return api.sendMessage(boxMessage('🛡️ You already have protection!', 'success'), threadID, messageID);
-        if (user.balance < PROTECTION_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for protection (₱${PROTECTION_PRICE})`, 'error'), threadID, messageID);
-        user.balance -= PROTECTION_PRICE;
-        user.protection = true;
-
-        // Admin gets 200 from protection buy
-        initUser(data, ADMIN_UID);
-        data[ADMIN_UID].balance += PROTECTION_PRICE;
-        addHistory(user, 'Bought Protection');
-        logAction(`User ${user.nickname || userId} bought protection for ₱${PROTECTION_PRICE}`);
-        await save();
-        await api.sendMessage(boxMessage('🛡️ Protection activated!', 'success'), threadID, messageID);
-        await notifyAllGroups(`📢 User ${user.nickname || userId} bought protection! (Admin earned ₱${PROTECTION_PRICE})`);
-        return;
-      } else if (item === 'building') {
-        if (user.balance < BUILDING_BASE_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for building (₱${BUILDING_BASE_PRICE})`, 'error'), threadID, messageID);
-        user.balance -= BUILDING_BASE_PRICE;
-        user.buildings++;
-        addHistory(user, `Bought building, total ${user.buildings}`);
-        logAction(`User ${user.nickname || userId} bought building for ₱${BUILDING_BASE_PRICE}`);
-        await save();
-        await api.sendMessage(boxMessage(`🏢 You bought a building! Total buildings: ${user.buildings}`, 'success'), threadID, messageID);
-        await notifyAllGroups(`📢 User ${user.nickname || userId} bought a building!`);
-        return;
-      } else if (item === 'house') {
-        if (user.balance < HOUSE_BASE_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for house (₱${HOUSE_BASE_PRICE})`, 'error'), threadID, messageID);
-        user.balance -= HOUSE_BASE_PRICE;
+      if (item === 'house') {
+        if (user.balance < PRICES.house) return api.sendMessage(box(`Not enough for house`, 'error'), threadID, msgID);
+        user.balance -= PRICES.house;
         user.houses++;
-        addHistory(user, `Bought house, total ${user.houses}`);
-        logAction(`User ${user.nickname || userId} bought house for ₱${HOUSE_BASE_PRICE}`);
+        user.history.push(`Bought house`);
+        logAction(`${uid} bought house`);
         await save();
-        await api.sendMessage(boxMessage(`🏠 You bought a house! Total houses: ${user.houses}`, 'success'), threadID, messageID);
-        await notifyAllGroups(`📢 User ${user.nickname || userId} bought a house!`);
-        return;
+        await api.sendMessage(box(`🏠 Bought a house!`, 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought a house!`);
+      } else if (item === 'building') {
+        if (user.balance < PRICES.building) return api.sendMessage(box(`Not enough for building`, 'error'), threadID, msgID);
+        user.balance -= PRICES.building; user.buildings++;
+        user.history.push('Bought building');
+        logAction(`${uid} bought building`);
+        await save();
+        await api.sendMessage(box('🏢 Bought building!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought building!`);
+      } else if (item === 'premium') {
+        if (user.premium) return api.sendMessage(box('Already premium', 'success'), threadID, msgID);
+        if (user.balance < 500) return api.sendMessage(box('Not enough for premium', 'error'), threadID, msgID);
+        user.balance -= 500; user.premium = true;
+        user.history.push('Premium activated');
+        logAction(`${uid} activated premium`);
+        await save();
+        await api.sendMessage(box('🎉 Premium activated!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought premium!`);
+      } else if (item === 'protection') {
+        if (user.protection) return api.sendMessage(box('Already have protection', 'success'), threadID, msgID);
+        if (user.balance < PRICES.protection) return api.sendMessage(box('Not enough for protection', 'error'), threadID, msgID);
+        user.balance -= PRICES.protection; user.protection = true;
+        data[ADMIN_UID].balance += PRICES.protection;
+        user.history.push('Bought protection'); logAction(`${uid} bought protection`);
+        await save();
+        await api.sendMessage(box('🛡️ Protection activated!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought protection!`);
       } else if (item === 'worker') {
-        if (user.balance < WORKER_BASE_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for worker (₱${WORKER_BASE_PRICE})`, 'error'), threadID, messageID);
-        user.balance -= WORKER_BASE_PRICE;
-        user.workers.push({ id: Date.now(), level: 1, incomeBoost: 0 });
-        addHistory(user, 'Bought worker');
-        logAction(`User ${user.nickname || userId} bought worker for ₱${WORKER_BASE_PRICE}`);
+        if (user.balance < PRICES.worker) return api.sendMessage(box('Not enough for worker', 'error'), threadID, msgID);
+        user.balance -= PRICES.worker;
+        user.workers.push({ id: Date.now(), level:1 });
+        user.history.push('Bought worker'); logAction(`${uid} bought worker`);
         await save();
-        await api.sendMessage(boxMessage('👷 You bought a worker!', 'success'), threadID, messageID);
-        await notifyAllGroups(`📢 User ${user.nickname || userId} bought a worker!`);
-        return;
+        await api.sendMessage(box('👷 Bought worker!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought worker!`);
       } else if (item === 'agent') {
-        if (user.balance < AGENT_PRICE) return api.sendMessage(boxMessage(`❌ Not enough balance for agent (₱${AGENT_PRICE})`, 'error'), threadID, messageID);
-        user.balance -= AGENT_PRICE;
-        user.agents.push({ id: Date.now(), income: 100 });
-        addHistory(user, 'Bought agent');
-        logAction(`User ${user.nickname || userId} bought agent for ₱${AGENT_PRICE}`);
+        if (user.balance < PRICES.agent) return api.sendMessage(box('Not enough for agent', 'error'), threadID, msgID);
+        user.balance -= PRICES.agent;
+        user.agents.push({ id:Date.now(), income:100 });
+        user.history.push('Bought agent'); logAction(`${uid} bought agent`);
         await save();
-        await api.sendMessage(boxMessage('👨‍💼 You bought an agent!', 'success'), threadID, messageID);
-        await notifyAllGroups(`📢 User ${user.nickname || userId} bought an agent!`);
-        return;
+        await api.sendMessage(box('🕵️ Agent bought!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought agent!`);
       } else {
-        return api.sendMessage(boxMessage('❌ Unknown item to buy.', 'error'), threadID, messageID);
+        return api.sendMessage(box('Unknown item', 'error'), threadID, msgID);
       }
+      break;
     }
+
+    case 'rent': {
+      if (args[1] !== 'house') return api.sendMessage(box('Use rent house', 'error'), threadID, msgID);
+      if (user.houses < 1) return api.sendMessage(box('No houses to rent', 'error'), threadID, msgID);
+      user.balance += RENT_INCOME * user.houses;
+      user.history.push(`Collected rent ₱${RENT_INCOME * user.houses}`);
+      logAction(`${uid} collected rent`);
+      await save();
+      return api.sendMessage(box(`🏠 You earned ₱${RENT_INCOME * user.houses} from houses`, 'success'), threadID, msgID);
+    }
+
+    case 'rentstatus':
+      return api.sendMessage(box(`You have ${user.houses} houses.`, 'info'), threadID, msgID);
 
     case 'loan': {
-      const subcmd = (args[1] || '').toLowerCase();
-      const amount = parseInt(args[2]) || 0;
-      if (subcmd === 'take') {
-        if (!amount || amount <= 0) return api.sendMessage(boxMessage('❌ Specify a valid loan amount.', 'error'), threadID, messageID);
-        user.balance += amount;
-        user.loan += amount;
-        user.loanInterest += amount * LOAN_INTEREST_RATE;
-        addHistory(user, `Took loan ₱${amount} + interest ₱${(amount * LOAN_INTEREST_RATE).toFixed(2)}`);
-        logAction(`User ${user.nickname || userId} took loan ₱${amount}`);
+      const act = (args[1]||'').toLowerCase();
+      const amt = parseInt(args[2])||0;
+      if (act === 'take') {
+        user.loan += amt;
+        user.loanInterest += amt * LOAN_INTEREST_RATE;
+        user.balance += amt;
+        user.history.push(`Took loan ₱${amt}`); logAction(`${uid} took loan`);
         await save();
-        return api.sendMessage(boxMessage(`💰 Loan taken: ₱${amount}. Interest: ₱${(amount * LOAN_INTEREST_RATE).toFixed(2)}`, 'loan'), threadID, messageID);
-      } else if (subcmd === 'pay') {
-        if (!amount || amount <= 0) return api.sendMessage(boxMessage('❌ Specify a valid pay amount.', 'error'), threadID, messageID);
-        if (user.balance < amount) return api.sendMessage(boxMessage('❌ Not enough balance to pay loan.', 'error'), threadID, messageID);
-        if (user.loan <= 0) return api.sendMessage(boxMessage('❌ You have no loan to pay.', 'error'), threadID, messageID);
-        let payAmount = Math.min(amount, user.loan + user.loanInterest);
-        user.balance -= payAmount;
-        if (payAmount > user.loan) {
-          user.loanInterest -= (payAmount - user.loan);
-          user.loan = 0;
-          if (user.loanInterest < 0) user.loanInterest = 0;
-        } else {
-          user.loan -= payAmount;
-        }
-        addHistory(user, `Paid loan ₱${payAmount.toFixed(2)}`);
-        logAction(`User ${user.nickname || userId} paid loan ₱${payAmount.toFixed(2)}`);
+        return api.sendMessage(box(`Loan ₱${amt} taken. Interest ₱${(amt*LOAN_INTEREST_RATE).toFixed(2)}`, 'loan'), threadID, msgID);
+      } else if (act === 'pay') {
+        let pay = Math.min(amt, user.loan + user.loanInterest);
+        if (user.balance < pay) return api.sendMessage(box('Not enough to pay', 'error'), threadID, msgID);
+        user.balance -= pay;
+        if (pay > user.loanInterest) {
+          pay -= user.loanInterest; user.loanInterest=0; user.loan = Math.max(0, user.loan - pay);
+        } else user.loanInterest -= pay;
+        user.history.push(`Paid loan ₱${amt}`); logAction(`${uid} paid loan`);
         await save();
-        return api.sendMessage(boxMessage(`💰 Paid loan ₱${payAmount.toFixed(2)}. Remaining loan: ₱${user.loan.toFixed(2)}`, 'loan'), threadID, messageID);
+        return api.sendMessage(box(`Paid ₱${amt}. Remaining loan ₱${user.loan}`, 'loan'), threadID, msgID);
       } else {
-        return api.sendMessage(boxMessage('❌ Use loan take <amount> or loan pay <amount>.', 'error'), threadID, messageID);
+        return api.sendMessage(box('Use loan take/pay <amount>', 'info'), threadID, msgID);
       }
     }
 
-    case 'bonus': {
+    case 'bonus':
       const now = Date.now();
-      if (now - user.lastBonus < BONUS_COOLDOWN) {
-        return api.sendMessage(boxMessage('⏳ Bonus is on cooldown. Try later.', 'cool'), threadID, messageID);
-      }
-      let bonus = BONUS_BASE + user.bonusLevel * 50;
-      if (user.premium) bonus *= 2;
+      if (now - user.lastBonus < BONUS_COOLDOWN)
+        return api.sendMessage(box(`Bonus cooldown. Try later.`, 'cool'), threadID, msgID);
+      const bonus = BONUS_BASE + user.bonusLevel * 50;
       user.balance += bonus;
       user.lastBonus = now;
-      addHistory(user, `Claimed bonus ₱${bonus}`);
-      logAction(`User ${user.nickname || userId} claimed bonus ₱${bonus}`);
+      user.history.push(`Claimed bonus ₱${bonus}`); logAction(`${uid} claimed bonus`);
       await save();
-      return api.sendMessage(boxMessage(`🎁 You claimed bonus ₱${bonus}!`, 'bonus'), threadID, messageID);
-    }
+      return api.sendMessage(box(`🎁 You got bonus ₱${bonus}`, 'bonus'), threadID, msgID);
 
-    case 'bonusupgrade': {
-      if (userId !== ADMIN_UID) return api.sendMessage(boxMessage('❌ Admins only.', 'error'), threadID, messageID);
-      const level = parseInt(args[1]);
-      if (!level || level < 1 || level > BONUS_UPGRADE_PRICES.length) return api.sendMessage(boxMessage('❌ Invalid bonus upgrade level.', 'error'), threadID, messageID);
-      const price = BONUS_UPGRADE_PRICES[level - 1];
-      if (data[ADMIN_UID].balance < price) return api.sendMessage(boxMessage('❌ Admin does not have enough balance.', 'error'), threadID, messageID);
-      data[ADMIN_UID].balance -= price;
-      for (const uid in data) {
-        if (uid === ADMIN_UID) continue;
-        if (data[uid].bonusLevel < level) data[uid].bonusLevel = level;
-      }
-      addLog(`Admin upgraded bonus to level ${level} for ₱${price}`);
+    case 'bonusupgrade':
+      if (uid!==ADMIN_UID) return api.sendMessage(box('Admins only', 'error'), threadID, msgID);
+      const lvl = parseInt(args[1]);
+      if (!lvl || lvl<1 || lvl>PRICES.bonusUpgrade.length)
+        return api.sendMessage(box('Invalid bonus upgrade level', 'error'), threadID, msgID);
+      const cost = PRICES.bonusUpgrade[lvl-1];
+      if (data[ADMIN_UID].balance < cost) return api.sendMessage(box('Admin insufficient funds', 'error'), threadID, msgID);
+      data[ADMIN_UID].balance -= cost;
+      for (const u in data) if (u!==ADMIN_UID) data[u].bonusLevel = Math.max(data[u].bonusLevel || 0, lvl);
+      logAction(`Admin upgraded bonus level to ${lvl} costing ₱${cost}`);
       await save();
-      return api.sendMessage(box
+      return api.sendMessage(box(`Bonus level set to ${lvl}!`, 'success'), threadID, msgID);
+
+    case 'houseupgrade':
+      if (uid!==ADMIN_UID) return api.sendMessage(box('Admins only', 'error'), threadID, msgID);
+      const lvl2 = parseInt(args[1]);
+      if (!lvl2 || lvl2<1||lvl2>PRICES.houseUpgrade.length)
+        return api.sendMessage(box('Invalid house upgrade level', 'error'), threadID, msgID);
+      const cost2 = PRICES.houseUpgrade[lvl2-1];
+      if (data[ADMIN_UID].balance < cost2) return api.sendMessage(box('Admin insufficient funds', 'error'), threadID, msgID);
+      data[ADMIN_UID].balance -= cost2;
+      for (const u in data) if (u!==ADMIN_UID) data[u].houseUpgradeLevel = Math.max(data[u].houseUpgradeLevel||0, lvl2);
+      logAction(`Admin upgraded house level to ${lvl2} costing ₱${cost2}`);
+      await save();
+      return api.sendMessage(box(`House upgrade level set to ${lvl2}!`, 'success'), threadID, msgID);
+
+    case 'post':
+      const txt = args.slice(1).join(' ').trim();
+      if (!txt) return api.sendMessage(box('Provide a message to post', 'error'), threadID, msgID);
+      user.posts.push({ txt, time: Date.now(), nick: user.nickname });
+      const earn = POST_REWARD_BASE + user.bonusLevel * 20;
+      user.balance += earn;
+      user.history.push(`Posted and earned ₱${earn}`); logAction(`${uid} posted and earned ₹${earn}`);
+      await save();
+      return api.sendMessage(box(`Posted! You earned ₱${earn}`, 'social'), threadID, msgID);
+
+    case 'social':
+      let feed = '📱 Social Feed:\n';
+      Object.keys(data).forEach(u=>{
+        (data[u].posts||[]).slice(-3).forEach(p=>{
+          feed += `[${new Date(p.time).toLocaleString()}] (${data[u].nickname||u}): ${p.txt}\n`;
+        });
+      });
+      if (feed==='📱 Social Feed:\n') feed+='No posts yet.';
+      return api.sendMessage(box(feed,'social'), threadID, msgID);
+
+    case 'nickname':
+      const newNick = args.slice(1).join(' ').trim();
+      if (!newNick) return api.sendMessage(box('Nickname: ' + (user.nickname||'None')), threadID, msgID);
+      user.nickname = newNick;
+      user.history.push(`Set nickname to ${newNick}`); logAction(`${uid} set nickname`);
+      await save();
+      return api.sendMessage(box(`Nickname set to ${newNick}`,'success'), threadID, msgID);
+
+    case 'profile':
+      return api.sendMessage(box(
+        `UID: ${uid}\n`+
+        `Nick: ${user.nickname||'None'}\n`+
+        `Balance: ₱${user.balance}\n`+
+        `Loan: ₱${user.loan} + Interest: ₱${user.loanInterest}\n`+
+        `Premium: ${user.premium?'Yes':'No'}\n`+
+        `Protection: ${user.protection?'Yes':'No'}\n`+
+        `Houses: ${user.houses}\n`+
+        `Buildings: ${user.buildings}\n`+
+        `Workers: ${user.workers.length}\n`+
+        `Agents: ${user.agents.length}\n`+
+        `Bonus Level: ${user.bonusLevel}\n`+
+        `House Upgrade Level: ${user.houseUpgradeLevel}\n`, 'profile'), threadID, msgID);
+
+    case 'premiumrequest':
+      if (user.premium) return api.sendMessage(box('Already have premium','info'), threadID, msgID);
+      if (premiumReq.includes(uid)) return api.sendMessage(box('Request already pending','info'), threadID, msgID);
+      premiumReq.push(uid);
+      await saveJSON(PREMIUM_REQ_FILE, premiumReq);
+      await notifyAll(`📢 User ${(user.nickname||uid)} requested free premium. Admin use premiumapprove ${uid}`);
+      addHistory(user,'Requested premium'); logAction(`${uid} requested premium`);
+      return api.sendMessage(box('Premium request sent','success'), threadID, msgID);
+
+    case 'premiumapprove':
+      if (uid!==ADMIN_UID) return api.sendMessage(box('Admins only','error'), threadID, msgID);
+      const target = args[1];
+      if (!premiumReq.includes(target)) return api.sendMessage(box('No pending request for that UID','error'), threadID, msgID);
+      initUser(data, target);
+      data[target].premium = true;
+      premiumReq = premiumReq.filter(x=>x!==target);
+      saveJSON(PREMIUM_REQ_FILE, premiumReq);
+      await save();
+      await api.sendMessage(box(`Premium granted to UID ${target}`,'success'), threadID, msgID);
+      await notifyAll(`📢 Admin granted premium to UID ${target}`);
+      addHistory(data[target], 'Premium approved'); logAction(`Admin approved premium for ${target}`);
+      return;
+
+    case 'logs':
+      if (uid!==ADMIN_UID) return api.sendMessage(box('Admins only','error'), threadID, msgID);
+      const allLogs = loadJSON(LOGS_FILE, []);
+      const last = allLogs.slice(-10).map(e=>`${e.time}: ${e.text}`).join('\n');
+      return api.sendMessage(box('Last logs:\n'+last,'info'), threadID, msgID);
+
+    case 'agent':
+      const sc = (args[1]||'').toLowerCase();
+      if (sc==='list') return api.sendMessage(box(`Agents cost ₱${AGENT_PRICE}`,'agent'), threadID, msgID);
+      if (sc==='buy') {
+        if (user.balance<PRICES.agent) return api.sendMessage(box('Not enough for agent','error'), threadID, msgID);
+        user.balance-=PRICES.agent;
+        user.agents.push({id:Date.now(),income:100});
+        user.history.push('Bought agent'); logAction(`${uid} bought agent`);
+        await save();
+        return api.sendMessage(box('Agent bought!','success'), threadID, msgID);
+      }
+      if (sc==='show') return api.sendMessage(box(`You own ${user.agents.length} agents`,'agent'), threadID, msgID);
+      return api.sendMessage(box('agent commands: list/buy/show','error'), threadID, msgID);
+
+    case 'worker':
+      if ((args[1]||'').toLowerCase()==='upgrade') {
+        const wid = parseInt(args[2]);
+        const w = user.workers.find(x=>x.id===wid);
+        if (!w) return api.sendMessage(box('Worker not found','error'), threadID, msgID);
+        const cost = PRICES.workerUpgradeBase * (w.level+1);
+        if (user.balance<cost) return api.sendMessage(box('Not enough to upgrade worker','error'), threadID, msgID);
+        user.balance-=cost;
+        w.level++;
+        user.history.push(`Upgraded worker ${wid}`); logAction(`${uid} upgraded worker ${wid}`);
+        await save();
+        return api.sendMessage(box(`Worker ${wid} upgraded to level ${w.level}`,'success'), threadID, msgID);
+      }
+      break;
+
+    default:
+      return api.sendMessage(box('Unknown command. Use cshop help','error'), threadID, msgID);
+  }
+};
