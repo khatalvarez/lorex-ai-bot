@@ -1,276 +1,242 @@
 const fs = require('fs');
-const path = './user.json';
+const path = require('path');
+
+const ADMIN_UID = '61575137262643';
+
+const DATA_FILE = path.resolve(__dirname, 'cshop_users.json');
+const LOGS_FILE = path.resolve(__dirname, 'cshop_logs.json');
+const PREMIUM_REQ_FILE = path.resolve(__dirname, 'cshop_premium_requests.json');
+const MAINT_FILE = path.resolve(__dirname, 'cshop_maintenance.json');
+
+const POST_REWARD_BASE = 400;
+const BONUS_BASE = 100;
+const BONUS_COOLDOWN = 60 * 60 * 1000;
+const RENT_INCOME = 300;
+
+const PRICES = {
+  house: 10000,
+  building: 5000,
+  protection: 200,
+  worker: 1000,
+  agent: 2000,
+  workerUpgradeBase: 100,
+  houseUpgrade: [98000, 54000, 10000],
+  bonusUpgrade: [45000, 20000],
+};
+
+const LOAN_INTEREST_RATE = 0.1;
+
+function loadJSON(file, def = {}) {
+  try {
+    if (!fs.existsSync(file)) return def;
+    return JSON.parse(fs.readFileSync(file));
+  } catch { return def; }
+}
+
+function saveJSON(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+function logAction(text) {
+  const logs = loadJSON(LOGS_FILE, []).slice(-99);
+  logs.push({ time: new Date().toISOString(), text });
+  saveJSON(LOGS_FILE, logs);
+}
+
+function initUser(data, uid) {
+  if (!data[uid]) {
+    data[uid] = {
+      balance: 0,
+      loan: 0, loanInterest: 0,
+      premium: false,
+      protection: false,
+      houses: 0, buildings: 0, rentedHouses: 0,
+      workers: [], workerUpgradeLevel: 0,
+      nickname: null,
+      lastBonus: 0,
+      posts: [], history: [],
+      agents: [], houseUpgradeLevel: 0, bonusLevel: 0,
+    };
+  }
+}
+
+function box(text, type = 'info') {
+  const icons = {
+    success: '✅', error: '❌', warning: '⚠️',
+    info: 'ℹ️', loan: '💰', bonus: '🎁', social: '📱', profile: '📊',
+  };
+  return (icons[type] || '') + ' ' + text;
+}
 
 module.exports.config = {
   name: 'cshop',
   version: '1.0.0',
   hasPermission: 0,
   usePrefix: false,
-  aliases: [''],
-  description: "cshop module with buy, sell, posts, loans, premium, protection, transfer",
 };
 
-const adminID = '61575137262643';
+module.exports.run = async ({ event, api, args }) => {
+  const uid = event.senderID;
+  const threadID = event.threadID;
+  const msgID = event.messageID;
+  const cmd = (args[0] || '').toLowerCase();
 
-let savedMoney = {};
-try {
-  savedMoney = JSON.parse(fs.readFileSync(path, 'utf8'));
-} catch {
-  savedMoney = {};
-}
+  let data = loadJSON(DATA_FILE, {});
+  let maintenance = loadJSON(MAINT_FILE, { maintenance: false }).maintenance;
+  let premiumReq = loadJSON(PREMIUM_REQ_FILE, []);
 
-const users = {};
-
-const fruitsList = [
-  { name: 'Apple', price: 10 },
-  { name: 'Banana', price: 8 },
-  { name: 'Orange', price: 12 },
-  { name: 'Mango', price: 20 },
-  { name: 'Grapes', price: 15 },
-  { name: 'Pineapple', price: 25 },
-  { name: 'Strawberry', price: 30 },
-  { name: 'Watermelon', price: 18 },
-  { name: 'Cherry', price: 22 },
-  { name: 'Peach', price: 14 },
-  { name: 'Pear', price: 16 },
-  { name: 'Kiwi', price: 19 },
-  { name: 'Papaya', price: 17 },
-  { name: 'Plum', price: 21 },
-  { name: 'Coconut', price: 24 },
-  { name: 'Lemon', price: 13 },
-  { name: 'Blueberry', price: 28 },
-  { name: 'Guava', price: 23 },
-  { name: 'Melon', price: 20 },
-  { name: 'Avocado', price: 26 },
-];
-
-function saveMoney() {
-  for (const uid in users) {
-    savedMoney[uid] = users[uid].money;
-  }
-  fs.writeFileSync(path, JSON.stringify(savedMoney, null, 2));
-}
-
-function box(message, type = '') {
-  const emojis = {
-    info: 'ℹ️',
-    success: '✅',
-    error: '❌',
-    post: '📝',
-    bonus: '💰',
-    social: '📱',
-    loan: '💵',
-    transfer: '💸',
-    shop: '🛒',
-  };
-  const emoji = emojis[type] || '';
-  return `╔═══════════════╗
-${emoji} ${message}
-╚═══════════════╝
-
-Contact my developer https://www.facebook.com/haraamihan.25371`;
-}
-
-function findFruit(name) {
-  return fruitsList.find(f => f.name.toLowerCase() === name.toLowerCase());
-}
-
-module.exports.run = async function({ api, event, args }) {
-  const senderID = event.senderID;
-  const messageID = event.messageID;
-
-  if (!users[senderID]) {
-    users[senderID] = {
-      money: savedMoney[senderID] || 500,
-      fruits: {},
-      seeds: {},
-      posts: [],
-      loan: 0,
-      protection: false,
-      premium: false,
-      nickname: `User${senderID.slice(-4)}`,
-    };
+  if (maintenance && uid !== ADMIN_UID) {
+    return api.sendMessage(box('⚠️ CSHOP under maintenance', 'warning'), threadID, msgID);
   }
 
-  const user = users[senderID];
-  const cmd = args[0]?.toLowerCase();
+  initUser(data, uid);
+  initUser(data, ADMIN_UID);
+  const user = data[uid];
+
+  async function save() {
+    saveJSON(DATA_FILE, data);
+  }
+  async function notifyAll(msg) {
+    try {
+      const list = await api.getThreadList(100, null, ['INBOX']);
+      for (const t of list) {
+        await api.sendMessage(msg, t.threadID);
+      }
+    } catch {}
+  }
 
   switch (cmd) {
+    case 'help':
+      return api.sendMessage(box(`
+Commands:
+balance • buy • rent • rentstatus • loan take/pay • bonus • bonusupgrade (admin) • post • social
+nickname • profile • premiumrequest • premiumapprove (admin) • logs (admin)
+agent list/buy/show • worker upgrade <id> • houseupgrade (admin) • setnickname
+`, 'info'), threadID, msgID);
+
+    case 'balance':
+      return api.sendMessage(box(`💰Balance: ₱${user.balance}`, 'profile'), threadID, msgID);
+
     case 'buy': {
-      const sub = args[1]?.toLowerCase();
-      if (sub === 'fruits') {
-        const fruitName = args.slice(2).join(' ');
-        if (!fruitName) return api.sendMessage(box('Please specify fruit name to buy.', 'error'), senderID, messageID);
-        const fruit = findFruit(fruitName);
-        if (!fruit) return api.sendMessage(box('Fruit not found.', 'error'), senderID, messageID);
-        if (user.money < fruit.price) return api.sendMessage(box('Insufficient money to buy this fruit.', 'error'), senderID, messageID);
-        user.money -= fruit.price;
-        user.fruits[fruit.name] = (user.fruits[fruit.name] || 0) + 1;
-        saveMoney();
-        return api.sendMessage(box(`Bought 1 ${fruit.name} for $${fruit.price}.`, 'success'), senderID, messageID);
+      const item = (args[1] || '').toLowerCase();
+      if (item === 'house') {
+        if (user.balance < PRICES.house) return api.sendMessage(box(`Not enough for house`, 'error'), threadID, msgID);
+        user.balance -= PRICES.house;
+        user.houses++;
+        user.history.push(`Bought house`);
+        logAction(`${uid} bought house`);
+        await save();
+        await api.sendMessage(box(`🏠 Bought a house!`, 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought a house!`);
+      } else if (item === 'building') {
+        if (user.balance < PRICES.building) return api.sendMessage(box(`Not enough for building`, 'error'), threadID, msgID);
+        user.balance -= PRICES.building; user.buildings++;
+        user.history.push('Bought building');
+        logAction(`${uid} bought building`);
+        await save();
+        await api.sendMessage(box('🏢 Bought building!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought building!`);
+      } else if (item === 'premium') {
+        if (user.premium) return api.sendMessage(box('Already premium', 'success'), threadID, msgID);
+        if (user.balance < 500) return api.sendMessage(box('Not enough for premium', 'error'), threadID, msgID);
+        user.balance -= 500; user.premium = true;
+        user.history.push('Premium activated');
+        logAction(`${uid} activated premium`);
+        await save();
+        await api.sendMessage(box('🎉 Premium activated!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought premium!`);
+      } else if (item === 'protection') {
+        if (user.protection) return api.sendMessage(box('Already have protection', 'success'), threadID, msgID);
+        if (user.balance < PRICES.protection) return api.sendMessage(box('Not enough for protection', 'error'), threadID, msgID);
+        user.balance -= PRICES.protection; user.protection = true;
+        data[ADMIN_UID].balance += PRICES.protection;
+        user.history.push('Bought protection'); logAction(`${uid} bought protection`);
+        await save();
+        await api.sendMessage(box('🛡️ Protection activated!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought protection!`);
+      } else if (item === 'worker') {
+        if (user.balance < PRICES.worker) return api.sendMessage(box('Not enough for worker', 'error'), threadID, msgID);
+        user.balance -= PRICES.worker;
+        user.workers.push({ id: Date.now(), level:1 });
+        user.history.push('Bought worker'); logAction(`${uid} bought worker`);
+        await save();
+        await api.sendMessage(box('👷 Bought worker!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought worker!`);
+      } else if (item === 'agent') {
+        if (user.balance < PRICES.agent) return api.sendMessage(box('Not enough for agent', 'error'), threadID, msgID);
+        user.balance -= PRICES.agent;
+        user.agents.push({ id:Date.now(), income:100 });
+        user.history.push('Bought agent'); logAction(`${uid} bought agent`);
+        await save();
+        await api.sendMessage(box('🕵️ Agent bought!', 'success'), threadID, msgID);
+        await notifyAll(`📢 User ${(user.nickname||uid)} bought agent!`);
+      } else {
+        return api.sendMessage(box('Unknown item', 'error'), threadID, msgID);
       }
-      if (sub === 'seed') {
-        const seedName = args.slice(2).join(' ');
-        if (!seedName) return api.sendMessage(box('Please specify seed name to buy.', 'error'), senderID, messageID);
-        const fruit = findFruit(seedName);
-        if (!fruit) return api.sendMessage(box('Seed not found.', 'error'), senderID, messageID);
-        const seedPrice = Math.floor(fruit.price / 2);
-        if (user.money < seedPrice) return api.sendMessage(box('Insufficient money to buy this seed.', 'error'), senderID, messageID);
-        user.money -= seedPrice;
-        user.seeds[fruit.name] = (user.seeds[fruit.name] || 0) + 1;
-        saveMoney();
-        return api.sendMessage(box(`Bought 1 ${fruit.name} seed for $${seedPrice}.`, 'success'), senderID, messageID);
-      }
-      if (sub === 'protection') {
-        const price = 56;
-        if (user.money < price) return api.sendMessage(box('Insufficient money to buy protection.', 'error'), senderID, messageID);
-        user.money -= price;
-        user.protection = true;
-        await api.sendMessage(`Protection bought by ${user.nickname} for $${price}.`, adminID);
-        saveMoney();
-        return api.sendMessage(box(`You bought protection for $${price}.`, 'success'), senderID, messageID);
-      }
-      if (sub === 'premium') {
-        const price = 100;
-        if (user.money < price) return api.sendMessage(box('Insufficient money to buy premium.', 'error'), senderID, messageID);
-        user.money -= price;
-        user.premium = true;
-        await api.sendMessage(`Premium bought by ${user.nickname} for $${price}.`, adminID);
-        saveMoney();
-        return api.sendMessage(box(`You bought premium for $${price}.`, 'success'), senderID, messageID);
-      }
-      return api.sendMessage(box('Unknown buy command.', 'error'), senderID, messageID);
+      break;
     }
 
-    case 'sell': {
-      const sub = args[1]?.toLowerCase();
-      if (sub === 'fruits') {
-        const fruitName = args.slice(2).join(' ');
-        if (!fruitName) return api.sendMessage(box('Please specify fruit name to sell.', 'error'), senderID, messageID);
-        const fruit = findFruit(fruitName);
-        if (!fruit) return api.sendMessage(box('Fruit not found.', 'error'), senderID, messageID);
-        if (!user.fruits[fruit.name] || user.fruits[fruit.name] < 1) return api.sendMessage(box('You do not have this fruit to sell.', 'error'), senderID, messageID);
-        const sellPrice = Math.floor(fruit.price * 0.7);
-        user.fruits[fruit.name]--;
-        if (user.fruits[fruit.name] === 0) delete user.fruits[fruit.name];
-        user.money += sellPrice;
-        saveMoney();
-        return api.sendMessage(box(`Sold 1 ${fruit.name} for $${sellPrice}.`, 'success'), senderID, messageID);
-      }
-      if (sub === 'seed') {
-        const seedName = args.slice(2).join(' ');
-        if (!seedName) return api.sendMessage(box('Please specify seed name to sell.', 'error'), senderID, messageID);
-        const fruit = findFruit(seedName);
-        if (!fruit) return api.sendMessage(box('Seed not found.', 'error'), senderID, messageID);
-        if (!user.seeds[fruit.name] || user.seeds[fruit.name] < 1) return api.sendMessage(box('You do not have this seed to sell.', 'error'), senderID, messageID);
-        const seedSellPrice = Math.floor((fruit.price / 2) * 0.7);
-        user.seeds[fruit.name]--;
-        if (user.seeds[fruit.name] === 0) delete user.seeds[fruit.name];
-        user.money += seedSellPrice;
-        saveMoney();
-        return api.sendMessage(box(`Sold 1 ${fruit.name} seed for $${seedSellPrice}.`, 'success'), senderID, messageID);
-      }
-      return api.sendMessage(box('Unknown sell command.', 'error'), senderID, messageID);
+    case 'rent': {
+      if (args[1] !== 'house') return api.sendMessage(box('Use rent house', 'error'), threadID, msgID);
+      if (user.houses < 1) return api.sendMessage(box('No houses to rent', 'error'), threadID, msgID);
+      user.balance += RENT_INCOME * user.houses;
+      user.history.push(`Collected rent ₱${RENT_INCOME * user.houses}`);
+      logAction(`${uid} collected rent`);
+      await save();
+      return api.sendMessage(box(`🏠 You earned ₱${RENT_INCOME * user.houses} from houses`, 'success'), threadID, msgID);
     }
 
-    case 'garden': {
-      const msg = `Your Garden:
-
-Fruits:
-${Object.entries(user.fruits).map(([f, c]) => `${f}: ${c}`).join('\n') || 'None'}
-
-Seeds:
-${Object.entries(user.seeds).map(([s, c]) => `${s}: ${c}`).join('\n') || 'None'}`;
-
-      return api.sendMessage(box(msg, 'info'), senderID, messageID);
-    }
-
-    case 'earn': {
-      const earnAmount = Math.floor(Math.random() * 16) + 5;
-      user.money += earnAmount;
-      saveMoney();
-      return api.sendMessage(box(`You earned $${earnAmount} today!`, 'bonus'), senderID, messageID);
-    }
-
-    case 'post': {
-      const sub = args[1]?.toLowerCase();
-      if (sub === 'add') {
-        const content = args.slice(2).join(' ');
-        if (!content) return api.sendMessage(box('Please provide content to post.', 'error'), senderID, messageID);
-        user.posts.push(content);
-        return api.sendMessage(box('Post added!', 'post'), senderID, messageID);
-      }
-      if (sub === 'list') {
-        if (user.posts.length === 0) return api.sendMessage(box('You have no posts.', 'info'), senderID, messageID);
-        const postsList = user.posts.map((p, i) => `${i + 1}. ${p}`).join('\n');
-        return api.sendMessage(box(`Your posts:\n${postsList}`, 'post'), senderID, messageID);
-      }
-      if (sub === 'remove') {
-        const index = parseInt(args[2], 10);
-        if (!index || index < 1 || index > user.posts.length) return api.sendMessage(box('Invalid post number to remove.', 'error'), senderID, messageID);
-        user.posts.splice(index - 1, 1);
-        return api.sendMessage(box('Post removed.', 'post'), senderID, messageID);
-      }
-      return api.sendMessage(box('Unknown post command.', 'error'), senderID, messageID);
-    }
+    case 'rentstatus':
+      return api.sendMessage(box(`You have ${user.houses} houses.`, 'info'), threadID, msgID);
 
     case 'loan': {
-      const sub = args[1]?.toLowerCase();
-      if (sub === 'borrow') {
-        if (user.loan > 0) return api.sendMessage(box('You already have a loan. Pay it first.', 'error'), senderID, messageID);
-        const amount = parseInt(args[2], 10);
-        if (!amount || amount < 50) return api.sendMessage(box('Minimum loan amount is $50.', 'error'), senderID, messageID);
-        user.money += amount;
-        user.loan = amount;
-        saveMoney();
-        return api.sendMessage(box(`You borrowed $${amount}.`, 'loan'), senderID, messageID);
+      const act = (args[1]||'').toLowerCase();
+      const amt = parseInt(args[2])||0;
+      if (act === 'take') {
+        user.loan += amt;
+        user.loanInterest += amt * LOAN_INTEREST_RATE;
+        user.balance += amt;
+        user.history.push(`Took loan ₱${amt}`); logAction(`${uid} took loan`);
+        await save();
+        return api.sendMessage(box(`Loan ₱${amt} taken. Interest ₱${(amt*LOAN_INTEREST_RATE).toFixed(2)}`, 'loan'), threadID, msgID);
+      } else if (act === 'pay') {
+        let pay = Math.min(amt, user.loan + user.loanInterest);
+        if (user.balance < pay) return api.sendMessage(box('Not enough to pay', 'error'), threadID, msgID);
+        user.balance -= pay;
+        if (pay > user.loanInterest) {
+          pay -= user.loanInterest; user.loanInterest=0; user.loan = Math.max(0, user.loan - pay);
+        } else user.loanInterest -= pay;
+        user.history.push(`Paid loan ₱${amt}`); logAction(`${uid} paid loan`);
+        await save();
+        return api.sendMessage(box(`Paid ₱${amt}. Remaining loan ₱${user.loan}`, 'loan'), threadID, msgID);
+      } else {
+        return api.sendMessage(box('Use loan take/pay <amount>', 'info'), threadID, msgID);
       }
-      if (sub === 'pay') {
-        if (user.loan === 0) return api.sendMessage(box('You have no loan to pay.', 'error'), senderID, messageID);
-        const amount = parseInt(args[2], 10);
-        if (!amount || amount < 1) return api.sendMessage(box('Please specify amount to pay.', 'error'), senderID, messageID);
-        if (amount > user.money) return api.sendMessage(box('Insufficient money to pay loan.', 'error'), senderID, messageID);
-        if (amount > user.loan) return api.sendMessage(box(`You only owe $${user.loan}.`, 'error'), senderID, messageID);
-        user.money -= amount;
-        user.loan -= amount;
-        saveMoney();
-        if (user.loan === 0) {
-          return api.sendMessage(box('Loan fully paid!', 'success'), senderID, messageID);
-        }
-        return api.sendMessage(box(`Paid $${amount}. Remaining loan: $${user.loan}`, 'loan'), senderID, messageID);
-      }
-      return api.sendMessage(box('Unknown loan command.', 'error'), senderID, messageID);
     }
 
-    case 'transfer': {
-      const targetID = args[1];
-      const amount = parseInt(args[2], 10);
-      if (!targetID || !amount) return api.sendMessage(box('Please specify target ID and amount to transfer.', 'error'), senderID, messageID);
-      if (targetID === senderID) return api.sendMessage(box('You cannot transfer money to yourself.', 'error'), senderID, messageID);
-      if (user.money < amount) return api.sendMessage(box('Insufficient money to transfer.', 'error'), senderID, messageID);
+    case 'bonus':
+      const now = Date.now();
+      if (now - user.lastBonus < BONUS_COOLDOWN)
+        return api.sendMessage(box(`Bonus cooldown. Try later.`, 'cool'), threadID, msgID);
+      const bonus = BONUS_BASE + user.bonusLevel * 50;
+      user.balance += bonus;
+      user.lastBonus = now;
+      user.history.push(`Claimed bonus ₱${bonus}`); logAction(`${uid} claimed bonus`);
+      await save();
+      return api.sendMessage(box(`🎁 You got bonus ₱${bonus}`, 'bonus'), threadID, msgID);
 
-      if (!users[targetID]) {
-        users[targetID] = {
-          money: savedMoney[targetID] || 500,
-          fruits: {},
-          seeds: {},
-          posts: [],
-          loan: 0,
-          protection: false,
-          premium: false,
-          nickname: `User${targetID.slice(-4)}`,
-        };
-      }
+    case 'bonusupgrade':
+      if (uid!==ADMIN_UID) return api.sendMessage(box('Admins only', 'error'), threadID, msgID);
+      const lvl = parseInt(args[1]);
+      if (!lvl || lvl<1 || lvl>PRICES.bonusUpgrade.length)
+        return api.sendMessage(box('Invalid bonus upgrade level', 'error'), threadID, msgID);
+      const cost = PRICES.bonusUpgrade[lvl-1];
+      if (data[ADMIN_UID].balance < cost) return api.sendMessage(box('Admin insufficient funds', 'error'), threadID, msgID);
+      data[ADMIN_UID].balance -= cost;
+      for (const u in data) if (u!==ADMIN_UID) data[u].bonusLevel = Math.max(data[u].bonusLevel || 0, lvl);
+      logAction(`Admin upgraded bonus level to ${lvl} costing ₱${cost}`);
+      await save();
+      return api.sendMessage(box(`Bonus level set to ${lvl}!`, 'success'), threadID, msgID);
 
-      user.money -= amount;
-      users[targetID].money += amount;
-      saveMoney();
-
-      await api.sendMessage(box(`You transferred $${amount} to ${users[targetID].nickname}.`, 'transfer'), senderID, messageID);
-      return api.sendMessage(box(`Received $${amount} from ${user.nickname}.`, 'transfer'), targetID);
-    }
-
-    default:
-      return api.sendMessage(box('Unknown command.', 'error'), senderID, messageID);
-  }
-};
+    case 'houseupgrade':
+      if (uid!==ADMIN_UID) return api.sendMessage(box('Admins only', 'error'), threadID, msgID);
