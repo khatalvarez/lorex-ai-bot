@@ -20,7 +20,7 @@ module.exports.config = {
 
 module.exports.run = async function({ api, event, args }) {
   const input = args.join(' ');
-  const defaultImageUrl = 'https://i.ibb.co/6DGYHcc/messandra.jpg';
+  const defaultImageUrl = 'https://ibb.co/svK2dgZj';
   const tempPath = path.join(__dirname, 'cache', 'messandra.jpg');
 
   // Kung walang input, magpapadala ng greeting + image
