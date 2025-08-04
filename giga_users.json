@@ -1,0 +1,76 @@
+{
+  "100012345678901": {
+    "money": 58320,
+    "earnings": 4250,
+    "loggedIn": true,
+    "lastRedeem": 1692754823000,
+    "house": true,
+    "houseExpire": 1693200000000,
+    "protectionExpire": 1693196400000,
+    "debt": 5000,
+    "resort": true,
+    "resortUpgrade": 3,
+    "resortLastCollect": 1692740000000,
+    "posts": [
+      {
+        "id": "post_001",
+        "content": "Loving the new resort update!",
+        "timestamp": 1692700000000
+      }
+    ],
+    "premium": false,
+    "lastProtectionBuy": 1692600000000,
+    "lastBonusClaim": 1692500000000,
+    "gamesPlayed": 55,
+    "lastGamePlay": 1692730000000
+  },
+  "200098765432109": {
+    "money": 7600,
+    "earnings": 0,
+    "loggedIn": false,
+    "lastRedeem": 0,
+    "house": false,
+    "houseExpire": 0,
+    "protectionExpire": 0,
+    "debt": 0,
+    "resort": false,
+    "resortUpgrade": 0,
+    "resortLastCollect": 0,
+    "posts": [],
+    "premium": true,
+    "lastProtectionBuy": 0,
+    "lastBonusClaim": 0,
+    "gamesPlayed": 18,
+    "lastGamePlay": 1692400000000
+  },
+  "61575137262643": {
+    "money": 125500,
+    "earnings": 18500,
+    "loggedIn": true,
+    "lastRedeem": 1692758000000,
+    "house": true,
+    "houseExpire": 1693300000000,
+    "protectionExpire": 1693296400000,
+    "debt": 0,
+    "resort": true,
+    "resortUpgrade": 6,
+    "resortLastCollect": 1692748000000,
+    "posts": [
+      {
+        "id": "post_002",
+        "content": "Just bought premium! Loving the perks.",
+        "timestamp": 1692720000000
+      },
+      {
+        "id": "post_003",
+        "content": "My resort is now level 6!",
+        "timestamp": 1692730000000
+      }
+    ],
+    "premium": true,
+    "lastProtectionBuy": 1692650000000,
+    "lastBonusClaim": 1692600000000,
+    "gamesPlayed": 90,
+    "lastGamePlay": 1692749000000
+  }
+}
