@@ -1,7 +1,7 @@
 const fs = require('fs');
 const userDataPath = './data/users.json';
 
-const adminUIDs = ['61575137262643']; // Added admin UID
+const adminUIDs = ['61575137262643']; // Admin user IDs
 
 // Helper functions
 function loadUsers() {
@@ -291,4 +291,86 @@ Better luck next time! 🍀
     }
 
     case 'loan': {
-      if (!isLoggedIn(senderID, users)) return send(api,
+      if (!isLoggedIn(senderID, users)) 
+        return send(api, threadID, '❌ You must be logged in to request a loan.');
+
+      const amount = parseInt(args[1]);
+      if (isNaN(amount) || amount <= 0) 
+        return send(api, threadID, '❗ Usage: loan <amount>');
+
+      // Limit max loan amount (example: 100000)
+      const MAX_LOAN = 100000;
+      if (amount > MAX_LOAN)
+        return send(api, threadID, `❌ Max loan amount is ${MAX_LOAN} 💵.`);
+
+      user.money += amount;
+      user.debt += amount;
+      saveUsers(users);
+
+      return send(api, threadID, `✅ You borrowed ${amount} 💵. Please repay your loan using 'payloan <amount>'.`);
+    }
+
+    case 'payloan': {
+      if (!isLoggedIn(senderID, users))
+        return send(api, threadID, '❌ You must be logged in to pay loan.');
+
+      const payAmount = parseInt(args[1]);
+      if (isNaN(payAmount) || payAmount <= 0)
+        return send(api, threadID, '❗ Usage: payloan <amount>');
+
+      if (user.debt === 0)
+        return send(api, threadID, '✅ Wala kang utang na babayaran.');
+
+      if (user.money < payAmount)
+        return send(api, threadID, '❌ Wala kang sapat na pera para magbayad ng utang.');
+
+      if (payAmount > user.debt)
+        return send(api, threadID, `❌ Hindi pwede magbayad ng higit sa utang mo na ${user.debt} 💵.`);
+
+      user.money -= payAmount;
+      user.debt -= payAmount;
+      saveUsers(users);
+
+      return send(api, threadID, `✅ Nagbayad ka ng ${payAmount} 💵 sa utang mo. Natitirang utang: ${user.debt} 💵.`);
+    }
+
+    case 'give': {
+      if (!isAdmin(senderID)) 
+        return send(api, threadID, '❌ Hindi ka admin.');
+
+      const targetUID = args[1];
+      const giveAmount = parseInt(args[2]);
+
+      if (!targetUID || isNaN(giveAmount) || giveAmount <= 0)
+        return send(api, threadID, '❗ Usage: give <uid> <amount>');
+
+      if (!(targetUID in users))
+        return send(api, threadID, '❌ Target UID not found.');
+
+      users[targetUID].money += giveAmount;
+      saveUsers(users);
+
+      return send(api, threadID, `✅ Nagbigay ka ng ${giveAmount} 💵 kay UID: ${targetUID}.`);
+    }
+
+    case 'reset': {
+      if (!isAdmin(senderID))
+        return send(api, threadID, '❌ Hindi ka admin.');
+
+      users[senderID] = {
+        money: 0,
+        earnings: 0,
+        loggedIn: true,
+        lastRedeem: 0,
+        lastDaily: 0,
+        posts: [],
+        debt: 0,
+      };
+      saveUsers(users);
+      return send(api, threadID, '✅ Your account has been reset.');
+    }
+
+    default:
+      return send(api, threadID, '❌ Unknown command. Try "help" for list of commands.');
+  }
+};
