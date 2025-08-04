@@ -35,13 +35,12 @@ function generateRedeemCode(len = 6) {
 }
 
 module.exports.config = {
-  name: 'giga',
-  version: '2.1.0',
+  name: 'cshop',
+  version: '1.0.0',
   hasPermission: 0,
-  usePrefix: true,
-  description: 'Giga system with balance, transfer, redeem, collect, games, social media, and more.',
-  usages: 'help',
-  cooldowns: 5,
+  usePrefix: false,
+  aliases: [''],
+  description: "Giga system with balance, transfer, redeem, collect, games, posts, loans, admin commands, and more.",
 };
 
 module.exports.run = async function({ api, event, args }) {
@@ -60,6 +59,7 @@ module.exports.run = async function({ api, event, args }) {
       lastRedeem: 0,
       lastDaily: 0,
       posts: [],
+      debt: 0,
     };
     isNewUser = true;
   }
@@ -71,7 +71,7 @@ module.exports.run = async function({ api, event, args }) {
   const REDEEM_COOLDOWN = 3599000; // ~1 hour in ms
   const DAILY_COOLDOWN = 24 * 60 * 60 * 1000;
 
-  // Auto notify GC if new user registered (boxed message with emoji)
+  // Notify group chat if new user registered
   if (isNewUser) {
     const newUserMessage = 
 `📢📢📢━━━━━━━━━━━━━━
@@ -87,23 +87,8 @@ module.exports.run = async function({ api, event, args }) {
     case 'help': {
       const msg = `📦┏━━━ GIGA SYSTEM HELP ━━━┓
 👑 Commands:
-balance, transfer, redeem, collect, games, socialmedia, profile, daily, leaderboard, login, logout
-Use 'giga help2' to see more commands.
-──────────────────────────
-Contact my pogi owner:
-https://www.facebook.com/ZeromeNaval.61577040643519
-┗━━━━━━━━━━━━━━━━━━━━━┛`;
-      return send(api, threadID, msg);
-    }
-
-    case 'help2': {
-      const msg = `📦┏━━━ GIGA SYSTEM HELP 2 ━━━┓
-Admin Commands:
-give <uid> <amount>, reset <uid>
-──────────────────────────
-Game Instructions:
-Choose a game with 'giga games <game>'
-Play and earn money! No more coming soon - all unlocked!
+balance, transfer, redeem, collect, games, socialmedia, profile, daily, leaderboard, login, logout,
+post, feed, loan, payloan, give, reset
 ──────────────────────────
 Contact my pogi owner:
 https://www.facebook.com/ZeromeNaval.61577040643519
@@ -125,7 +110,7 @@ https://www.facebook.com/ZeromeNaval.61577040643519
       const amount = parseInt(args[2]);
 
       if (!recipientUID || isNaN(amount) || amount <= 0)
-        return send(api, threadID, '❗ Usage: giga transfer <uid> <amount>');
+        return send(api, threadID, '❗ Usage: transfer <uid> <amount>');
 
       if (!(recipientUID in users))
         return send(api, threadID, '❌ Recipient UID not found.');
@@ -143,8 +128,7 @@ https://www.facebook.com/ZeromeNaval.61577040643519
       return send(api, threadID, `✅ Successfully transferred ${amount} 💵 to UID: ${recipientUID}.`);
     }
 
-    case 'redeem':
-    case 'redem': {
+    case 'redeem': {
       if (!isLoggedIn(senderID, users))
         return send(api, threadID, '❌ You must be logged in to redeem codes.');
 
@@ -157,13 +141,13 @@ https://www.facebook.com/ZeromeNaval.61577040643519
       }
 
       const arg = args[1] ? args[1].toLowerCase() : null;
-      if (!arg) return send(api, threadID, '❗ Usage: giga redeem <new|code>');
+      if (!arg) return send(api, threadID, '❗ Usage: redeem <new|code>');
 
       if (arg === 'new') {
         const code = generateRedeemCode();
         users.redeemCodes[code] = REDEEM_REWARD;
         saveUsers(users);
-        return send(api, threadID, `🎟️ Redeem code generated: ${code}\nUse: giga redeem ${code}`);
+        return send(api, threadID, `🎟️ Redeem code generated: ${code}\nUse: redeem ${code}`);
       }
 
       const code = args[1];
@@ -208,7 +192,7 @@ https://www.facebook.com/ZeromeNaval.61577040643519
       const chosenGame = args[1] ? args[1].toLowerCase() : null;
 
       if (!chosenGame) {
-        return send(api, threadID, `🎮 Available Games:\n${availableGames.join(', ')}\n\nUsage: giga games <game>`);
+        return send(api, threadID, `🎮 Available Games:\n${availableGames.join(', ')}\n\nUsage: games <game>`);
       }
 
       if (!availableGames.includes(chosenGame)) {
@@ -261,35 +245,50 @@ Better luck next time! 🍀
       return send(api, threadID, '✅ Logout successful.');
     }
 
-    case 'give': {
-      if (!isAdmin(senderID)) return send(api, threadID, '❌ Wala kang permission dito.');
-      const targetUID = args[1];
-      const amount = parseInt(args[2]);
-      if (!targetUID || isNaN(amount)) return send(api, threadID, '❗ Usage: giga give <uid> <amount>');
-      if (!users[targetUID]) return send(api, threadID, '❌ Target user not found.');
-      users[targetUID].money += amount;
+    case 'post': {
+      if (!isLoggedIn(senderID, users))
+        return send(api, threadID, '❌ You must be logged in to post.');
+      const postContent = args.slice(1).join(' ');
+      if (!postContent)
+        return send(api, threadID, '❗ Usage: post <your message>');
+      user.posts.push(postContent);
+      // Earn 1000 per post
+      user.money += 1000;
       saveUsers(users);
-      return send(api, threadID, `✅ Binigyan mo ng ${amount} 💵 si ${targetUID}.`);
+      return send(api, threadID, `✅ Post added! You earned 1000 💵.`);
     }
 
-    case 'reset': {
-      if (!isAdmin(senderID)) return send(api, threadID, '❌ Wala kang permission dito.');
-      const targetUID = args[1];
-      if (!targetUID) return send(api, threadID, '❗ Usage: giga reset <uid>');
-      if (!users[targetUID]) return send(api, threadID, '❌ Target user not found.');
-      users[targetUID] = {
-        money: 0,
-        earnings: 0,
-        loggedIn: false,
-        lastRedeem: 0,
-        lastDaily: 0,
-        posts: [],
-      };
-      saveUsers(users);
-      return send(api, threadID, `✅ Na-reset ang account ni ${targetUID}.`);
+    case 'feed': {
+      const allPosts = [];
+      for (const uid in users) {
+        if (users[uid].posts.length > 0) {
+          users[uid].posts.forEach((p, i) => {
+            allPosts.push(`🆔 ${uid} (Post #${i + 1}): ${p}`);
+          });
+        }
+      }
+      if (allPosts.length === 0) return send(api, threadID, 'ℹ️ Walang posts na makita.');
+      return send(api, threadID, `📢 FEED:\n${allPosts.join('\n')}`);
     }
 
-    default:
-      return send(api, threadID, `❌ Unknown command: ${command}. Use giga help to see commands.`);
-  }
-};
+    case 'profile': {
+      if (!isLoggedIn(senderID, users)) return send(api, threadID, '❌ Not logged in.');
+      const msg = `📄 PROFILE:
+💵 Balance: ${user.money}
+🧾 Debt: ${user.debt}
+📈 Earnings: ${user.earnings}
+📝 Posts: ${user.posts.length}
+🔐 Logged in: ${user.loggedIn ? 'Yes' : 'No'}`;
+      return send(api, threadID, msg);
+    }
+
+    case 'leaderboard': {
+      const sorted = Object.entries(users)
+        .sort(([, a], [, b]) => b.money - a.money)
+        .slice(0, 10);
+      const lb = sorted.map(([uid, u], i) => `${i + 1}. ${uid}: ${u.money} 💵`).join('\n');
+      return send(api, threadID, `🏆 LEADERBOARD:\n${lb}`);
+    }
+
+    case 'loan': {
+      if (!isLoggedIn(senderID, users)) return send(api,
