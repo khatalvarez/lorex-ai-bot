@@ -1,40 +1,46 @@
 const fs = require('fs');
-const path = './data/users.json';
+const userDataPath = './data/users.json';
 
-// Load user data
+const adminUIDs = ['61575137262643']; // Added admin UID
+
+// Helper functions
 function loadUsers() {
-  if (!fs.existsSync(path)) return {};
-  return JSON.parse(fs.readFileSync(path));
+  if (!fs.existsSync(userDataPath)) return {};
+  return JSON.parse(fs.readFileSync(userDataPath, 'utf-8'));
 }
 
-// Save user data
 function saveUsers(users) {
-  fs.writeFileSync(path, JSON.stringify(users, null, 2));
+  fs.writeFileSync(userDataPath, JSON.stringify(users, null, 2));
 }
 
-// Check if logged in (simplified)
+function isAdmin(uid) {
+  return adminUIDs.includes(uid);
+}
+
 function isLoggedIn(uid, users) {
   return users[uid] && users[uid].loggedIn === true;
 }
 
-// Send message shortcut
 function send(api, threadID, message) {
   api.sendMessage(message, threadID);
 }
 
-// Generate random redeem code
-function generateRedeemCode(length = 6) {
+function generateRedeemCode(len = 6) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  return Array(length).fill(0).map(() => chars[Math.floor(Math.random() * chars.length)]).join('');
+  let code = '';
+  for (let i = 0; i < len; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
 }
 
 module.exports.config = {
   name: 'giga',
-  version: '1.1.0',
+  version: '2.1.0',
   hasPermission: 0,
   usePrefix: true,
-  description: 'Giga system with balance, transfer, redeem, collect, games etc.',
-  usages: 'balance/transfer/redem/collect/games',
+  description: 'Giga system with balance, transfer, redeem, collect, games, social media, and more.',
+  usages: 'help',
   cooldowns: 5,
 };
 
@@ -43,28 +49,71 @@ module.exports.run = async function({ api, event, args }) {
   const senderID = event.senderID;
   const threadID = event.threadID;
 
-  // Ensure user data exists
+  let isNewUser = false;
+
+  // Register new user automatically on first use
   if (!users[senderID]) {
     users[senderID] = {
       money: 0,
       earnings: 0,
-      loggedIn: true, // For demo assume logged in
+      loggedIn: true,
       lastRedeem: 0,
+      lastDaily: 0,
+      posts: [],
     };
+    isNewUser = true;
   }
 
   const user = users[senderID];
-  const cmd = args[0] ? args[0].toLowerCase() : '';
+  const command = args[0] ? args[0].toLowerCase() : '';
 
-  // Constants
   const REDEEM_REWARD = 89000;
-  const REDEEM_COOLDOWN = (3600 + 59) * 1000; // 1 hour 59 sec
+  const REDEEM_COOLDOWN = 3599000; // ~1 hour in ms
+  const DAILY_COOLDOWN = 24 * 60 * 60 * 1000;
 
-  switch (cmd) {
+  // Auto notify GC if new user registered (boxed message with emoji)
+  if (isNewUser) {
+    const newUserMessage = 
+`📢📢📢━━━━━━━━━━━━━━
+👋 New user registered!
+👤 UID: ${senderID}
+🎉 Welcome to Giga System!
+━━━━━━━━━━━━━━📢📢📢`;
+    send(api, threadID, newUserMessage);
+  }
+
+  switch (command) {
+
+    case 'help': {
+      const msg = `📦┏━━━ GIGA SYSTEM HELP ━━━┓
+👑 Commands:
+balance, transfer, redeem, collect, games, socialmedia, profile, daily, leaderboard, login, logout
+Use 'giga help2' to see more commands.
+──────────────────────────
+Contact my pogi owner:
+https://www.facebook.com/ZeromeNaval.61577040643519
+┗━━━━━━━━━━━━━━━━━━━━━┛`;
+      return send(api, threadID, msg);
+    }
+
+    case 'help2': {
+      const msg = `📦┏━━━ GIGA SYSTEM HELP 2 ━━━┓
+Admin Commands:
+give <uid> <amount>, reset <uid>
+──────────────────────────
+Game Instructions:
+Choose a game with 'giga games <game>'
+Play and earn money! No more coming soon - all unlocked!
+──────────────────────────
+Contact my pogi owner:
+https://www.facebook.com/ZeromeNaval.61577040643519
+┗━━━━━━━━━━━━━━━━━━━━━┛`;
+      return send(api, threadID, msg);
+    }
+
     case 'balance': {
       if (!isLoggedIn(senderID, users))
         return send(api, threadID, '❌ You must be logged in to view balance.');
-
       return send(api, threadID, `💰 Your balance: ${user.money} 💵`);
     }
 
@@ -89,12 +138,12 @@ module.exports.run = async function({ api, event, args }) {
 
       user.money -= amount;
       users[recipientUID].money += amount;
-
       saveUsers(users);
 
       return send(api, threadID, `✅ Successfully transferred ${amount} 💵 to UID: ${recipientUID}.`);
     }
 
+    case 'redeem':
     case 'redem': {
       if (!isLoggedIn(senderID, users))
         return send(api, threadID, '❌ You must be logged in to redeem codes.');
@@ -102,35 +151,29 @@ module.exports.run = async function({ api, event, args }) {
       if (!users.redeemCodes) users.redeemCodes = {};
 
       const now = Date.now();
-
       if (user.lastRedeem && now - user.lastRedeem < REDEEM_COOLDOWN) {
         const remain = Math.ceil((REDEEM_COOLDOWN - (now - user.lastRedeem)) / 1000);
         return send(api, threadID, `⏳ May cooldown pa ang redeem. Subukan mo ulit after ${remain} seconds.`);
       }
 
       const arg = args[1] ? args[1].toLowerCase() : null;
-
-      if (!arg) return send(api, threadID, '❗ Usage: giga redem <new|code>');
+      if (!arg) return send(api, threadID, '❗ Usage: giga redeem <new|code>');
 
       if (arg === 'new') {
         const code = generateRedeemCode();
         users.redeemCodes[code] = REDEEM_REWARD;
         saveUsers(users);
-        return send(api, threadID, `🎟️ Redeem code generated: ${code}\nUse: giga redem ${code}`);
+        return send(api, threadID, `🎟️ Redeem code generated: ${code}\nUse: giga redeem ${code}`);
       }
 
-      // Redeem code
       const code = args[1];
-      if (!(code in users.redeemCodes)) {
+      if (!(code in users.redeemCodes))
         return send(api, threadID, '❌ Invalid or expired redeem code.');
-      }
 
       const amount = users.redeemCodes[code];
       user.money += amount;
-
       delete users.redeemCodes[code];
       user.lastRedeem = now;
-
       saveUsers(users);
 
       return send(api, threadID, `✅ Successfully redeemed code! Nakakuha ka ng ${amount} 💵.`);
@@ -146,7 +189,6 @@ module.exports.run = async function({ api, event, args }) {
       const amount = user.earnings;
       user.money += amount;
       user.earnings = 0;
-
       saveUsers(users);
 
       return send(api, threadID, `✅ Nakolekta mo na ang iyong kita na ${amount} 💵.`);
@@ -156,33 +198,98 @@ module.exports.run = async function({ api, event, args }) {
       if (!isLoggedIn(senderID, users))
         return send(api, threadID, '❌ You must be logged in to play games.');
 
-      const gamesList = [
-        'Slots', 'Spinwheel', 'Dice', 'CoinFlip', 'Trivia',
-        'Puzzle', 'Memory', 'RockPaperScissors', 'Blackjack', 'Roulette',
-        'Bingo', 'Lottery', 'Minesweeper', 'TicTacToe', 'Sudoku',
-        'Hangman', 'Snake', 'Pacman', 'Chess', 'Checkers'
+      const availableGames = [
+        'slots', 'spinwheel', 'dice', 'coinflip', 'trivia',
+        'puzzle', 'memory', 'rockpaperscissors', 'blackjack', 'roulette',
+        'bingo', 'lottery', 'minesweeper', 'tictactoe', 'sudoku',
+        'hangman', 'snake', 'pacman', 'chess', 'checkers'
       ];
 
       const chosenGame = args[1] ? args[1].toLowerCase() : null;
 
       if (!chosenGame) {
-        return send(api, threadID, `🎮 Available Games:\n${gamesList.join(', ')}\n\nUsage: giga games <game>`);
+        return send(api, threadID, `🎮 Available Games:\n${availableGames.join(', ')}\n\nUsage: giga games <game>`);
       }
 
-      if (!gamesList.map(g => g.toLowerCase()).includes(chosenGame)) {
-        return send(api, threadID, `❌ Game "${chosenGame}" not found. Available games:\n${gamesList.join(', ')}`);
+      if (!availableGames.includes(chosenGame)) {
+        return send(api, threadID, `❌ Game "${chosenGame}" not found. Available games:\n${availableGames.join(', ')}`);
       }
 
-      // Random earning between 500 and 5000 per game play
-      const earning = Math.floor(Math.random() * (5000 - 500 + 1)) + 500;
+      // Simulate game earnings: 80% chance to win (earn between 500-5000), 20% lose (earn 0)
+      let earning = 0;
+      if (Math.random() < 0.8) {
+        earning = Math.floor(Math.random() * (5000 - 500 + 1)) + 500;
+        user.money += earning;
+        saveUsers(users);
+        return send(api, threadID, `🎉 Naglaro ka ng ${chosenGame.charAt(0).toUpperCase() + chosenGame.slice(1)} at kumita ng ${earning} 💵!`);
+      } else {
+        // Lost - auto send boxed message with emojis to GC
+        const loseMsg =
+`💔💔💔━━━━━━━━━━━━━━
+😢 User ${senderID} lost sa laro na ${chosenGame.charAt(0).toUpperCase() + chosenGame.slice(1)}.
+Better luck next time! 🍀
+━━━━━━━━━━━━━━💔💔💔`;
+        send(api, threadID, loseMsg);
+        return send(api, threadID, `😞 Sayang! Natalo ka sa ${chosenGame.charAt(0).toUpperCase() + chosenGame.slice(1)}. Subukan mo ulit!`);
+      }
+    }
 
-      user.money += earning;
+    case 'daily': {
+      const now = Date.now();
+      if (user.lastDaily && now - user.lastDaily < DAILY_COOLDOWN) {
+        const remain = Math.ceil((DAILY_COOLDOWN - (now - user.lastDaily)) / 1000);
+        return send(api, threadID, `⏳ Daily reward cooldown pa. Subukan mo ulit after ${remain} seconds.`);
+      }
+      const dailyAmount = 10000;
+      user.money += dailyAmount;
+      user.lastDaily = now;
       saveUsers(users);
+      return send(api, threadID, `🎁 Nakakuha ka ng daily reward na ${dailyAmount} 💵!`);
+    }
 
-      return send(api, threadID, `🎉 Naglaro ka ng ${chosenGame.charAt(0).toUpperCase() + chosenGame.slice(1)} at kumita ng ${earning} 💵!`);
+    case 'login': {
+      if (user.loggedIn) return send(api, threadID, '✅ Nakalogin ka na.');
+      user.loggedIn = true;
+      saveUsers(users);
+      return send(api, threadID, '✅ Login successful.');
+    }
+
+    case 'logout': {
+      if (!user.loggedIn) return send(api, threadID, '❌ Hindi ka naka-login.');
+      user.loggedIn = false;
+      saveUsers(users);
+      return send(api, threadID, '✅ Logout successful.');
+    }
+
+    case 'give': {
+      if (!isAdmin(senderID)) return send(api, threadID, '❌ Wala kang permission dito.');
+      const targetUID = args[1];
+      const amount = parseInt(args[2]);
+      if (!targetUID || isNaN(amount)) return send(api, threadID, '❗ Usage: giga give <uid> <amount>');
+      if (!users[targetUID]) return send(api, threadID, '❌ Target user not found.');
+      users[targetUID].money += amount;
+      saveUsers(users);
+      return send(api, threadID, `✅ Binigyan mo ng ${amount} 💵 si ${targetUID}.`);
+    }
+
+    case 'reset': {
+      if (!isAdmin(senderID)) return send(api, threadID, '❌ Wala kang permission dito.');
+      const targetUID = args[1];
+      if (!targetUID) return send(api, threadID, '❗ Usage: giga reset <uid>');
+      if (!users[targetUID]) return send(api, threadID, '❌ Target user not found.');
+      users[targetUID] = {
+        money: 0,
+        earnings: 0,
+        loggedIn: false,
+        lastRedeem: 0,
+        lastDaily: 0,
+        posts: [],
+      };
+      saveUsers(users);
+      return send(api, threadID, `✅ Na-reset ang account ni ${targetUID}.`);
     }
 
     default:
-      return send(api, threadID, '❗ Available commands: balance, transfer, redem, collect, games');
+      return send(api, threadID, `❌ Unknown command: ${command}. Use giga help to see commands.`);
   }
 };
