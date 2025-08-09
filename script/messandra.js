@@ -13,7 +13,7 @@ function convertToBold(text) {
 }
 
 const responseOpeners = [
-  "𝗚𝗽𝘁-𝟰𝗼"
+  "𝗚𝗽𝘁-𝟰 𝗙𝗿𝗲𝗲"
 ];
 
 module.exports.config = {
@@ -73,9 +73,9 @@ module.exports.run = async function({ api, event, args }) {
   }
 
   // === GPT-4o TEXT MODE ===
-  if (!input) return api.sendMessage("🌟 Greetings! I am 𝗠𝗲𝘀𝘀𝗮𝗻𝗱𝗿𝗮 , your gateway to GPT-4 intelligence. I am here to assist you", threadID, messageID);
+  if (!input) return api.sendMessage("❌ Please provide a prompt.", threadID, messageID);
 
-  const tempMsg = await sendTemp(api, threadID, "🔄Searching....");
+  const tempMsg = await sendTemp(api, threadID, "🔄 Generating...");
 
   try {
     const { data } = await axios.get('https://daikyu-api.up.railway.app/api/o3-mini', {
