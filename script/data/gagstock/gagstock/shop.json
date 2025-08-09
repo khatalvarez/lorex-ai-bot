@@ -1,0 +1,12 @@
+{
+  "fertilizer": {
+    "name": "🌿 Fertilizer",
+    "description": "Boosts harvest by +20%",
+    "price": 100
+  },
+  "wateringcan": {
+    "name": "💧 Watering Can",
+    "description": "Speeds up growth (coming soon)",
+    "price": 75
+  }
+}
