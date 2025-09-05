@@ -1,0 +1,43 @@
+const axios = require("axios");
+
+module.exports = {
+  config: {
+    name: meta",
+    aliases: [],
+    version: "1.0.0",
+    author: "YourName",
+    countDown: 0,
+    role: 0,
+    description: "Chat with LLaMA AI (Plain)",
+    category: "llama",
+    guide: {
+      en: "{pn} <your message>"
+    }
+  },
+
+  async onStart({ message, args }) {
+    const prompt = args.join(" ").trim();
+
+    if (!prompt) {
+      return message.reply("❗ Please provide a prompt. Example:\n`llama Hello, how are you?`");
+    }
+
+    try {
+      const res = await axios.get("https://arychauhann.onrender.com/api/metaai", {
+        params: { prompt },
+        timeout: 10000
+      });
+
+      const reply = res.data?.result;
+
+      if (!reply) {
+        return message.reply("⚠️ API returned no response. Try again.");
+      }
+
+      return message.reply(`LLAMA 4\n\n${reply}`);
+    } catch (err) {
+      console.error("LLaMA API Error:", err);
+      return message.reply("❌ Failed to connect to Meta AI. API might be down.");
+    }
+  }
+};
